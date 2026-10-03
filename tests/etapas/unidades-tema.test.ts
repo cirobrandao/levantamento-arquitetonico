@@ -24,3 +24,13 @@ describe('Etapa 16 — tema', () => {
     expect(isTheme('sepia')).toBe(false)
   })
 })
+import { readFileSync } from 'node:fs'
+describe('Etapa 16 — cores só por variáveis', () => {
+  it('styles.css não tem cor fixa e toda variável existe nos temas claro e escuro', () => {
+    const css = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8'), theme = readFileSync(new URL('../../src/theme.css', import.meta.url), 'utf8')
+    expect(css.match(/#[0-9a-f]{3,6}\b/gi) ?? []).toEqual([])
+    const used = new Set([...css.matchAll(/--(c|rgb)-([0-9a-f]{6})/g)].map(m => `--${m[1]}-${m[2]}`))
+    const dark = theme.slice(theme.indexOf('[data-theme=dark]'))
+    for (const name of used) { expect(theme).toContain(`${name}:`); expect(dark).toContain(`${name}:`) }
+  })
+})

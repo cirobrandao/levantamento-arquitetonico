@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
-import type { Project } from './models'
+import type { Floor, Project, Room } from './models'
 import type { WorkspaceData } from './storage'
 import ServerHistory from './ServerHistory'
 import ProjectArchivePanel from './ProjectArchivePanel'
+import PdfExportPanel from './PdfExportPanel'
 import { createBackup, downloadText, importProjects, parseBackup, projectCsv } from './exporting'
 
 // Exportações (relatório, planilha, backup) e importação de backup.
-export default function ExportPanel({ workspace, project, onImport, onReport }: { workspace: WorkspaceData; project: Project; onImport: (data: WorkspaceData) => void; onReport: () => void }) {
+export default function ExportPanel({ workspace, project, floor, room, onImport, onReport }: { workspace: WorkspaceData; project: Project; floor?: Floor; room?: Room; onImport: (data: WorkspaceData) => void; onReport: () => void }) {
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string }>()
   const input = useRef<HTMLInputElement>(null)
   const run = (action: () => void) => { try { action() } catch (error) { setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Não foi possível exportar.' }) } }
@@ -29,6 +30,7 @@ export default function ExportPanel({ workspace, project, onImport, onReport }: 
       <button onClick={() => run(() => { const file = createBackup(workspace); downloadText(file.fileName, file.text, 'application/json'); setMessage({ type: 'ok', text: `Backup ${file.fileName} gerado.` }) })}>Backup de todos os projetos</button>
       <label className="import-button">Importar backup…<input ref={input} type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file) }}/></label>
     </div>
+    <PdfExportPanel project={project} floor={floor} room={room}/>
     <ProjectArchivePanel workspace={workspace} project={project} onImport={onImport}/>
     <p className="muted">O arquivo .levantamento leva o projeto inteiro com as fotos; o backup JSON guarda as medidas (sem as imagens). Ambos podem ser importados em outro navegador ou aparelho.</p>
     <ServerHistory/>
