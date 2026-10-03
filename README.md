@@ -39,6 +39,10 @@ Excluir uma foto exige confirmação; seus Blobs são removidos na mesma transa�
 
 Verificação: `npm test` executa onze suítes. `tests/photos.mjs` cobre busca e filtros, renomeação, desvinculação, preservação de medidas, migração de schemas/banco, Blobs separados, reabertura e exclusão de arquivos. `fake-indexeddb` é utilizado apenas nos testes. A interface foi verificada em largura mobile pela rede local, com botões de captura grandes e mini croqui persistente; a câmera física precisa ser validada no celular. Não há backup/exportação nesta etapa.
 
+## Servidor opcional: login e sincronização entre aparelhos
+
+A aplicação continua estática e local por padrão. Para usar login, papéis de administrador e usuário, e sincronizar os levantamentos entre aparelhos via PostgreSQL, veja [server/README.md](server/README.md). O servidor entrega o mesmo `dist/` e ativa a sincronização somente nas páginas servidas por ele.
+
 ## Quantitativos, relatório e exportações (complemento)
 
 - **Quantitativos por ambiente** (`src/metrics.ts`, quadro abaixo do formulário): área do piso (≈ quando usa ângulo calculado ou fechamento aproximado), perímetro na unidade do projeto, área bruta e líquida de paredes, área de aberturas e volume. Nada é gravado de volta nas medidas; dados ausentes são listados.
@@ -136,7 +140,7 @@ O envelope tem `schemaVersion: 1`, `revision` e `savedAt`. A versão está centr
 
 Excluir projetos, pavimentos, ambientes e aberturas continua sincronizando suas relações antes de persistir. Paredes agora também podem ser removidas com confirmação: referências a paredes/cantos excluídos são limpas nas aberturas, PIs e diagonais, mas suas medidas permanecem para reassociação. Os vínculos de paredes em outros ambientes são limpos com aviso técnico. A nomenclatura de paredes novas evita duplicar rótulos ainda existentes.
 
-Os dados pertencem ao navegador, perfil e endereço utilizados; `localhost` e `127.0.0.1` são armazenamentos diferentes. A aplicação solicita retenção persistente ao navegador quando disponível. Limpar os dados do site ou usar uma sessão privada afeta a retenção. Para encerrar normalmente, aguarde “Salvo”. Não há backend ou Supabase.
+Sem o servidor opcional, os dados pertencem ao navegador, perfil e endereço utilizados; `localhost` e `127.0.0.1` são armazenamentos diferentes. A aplicação solicita retenção persistente ao navegador quando disponível. Limpar os dados do site ou usar uma sessão privada afeta a retenção. Para encerrar normalmente, aguarde “Salvo”. Não há backend ou Supabase.
 
 Verificação: `node tests/persistence.mjs`, além dos testes anteriores. No navegador, conferidos atualização da página, atualização imediata durante debounce, fechamento/reabertura da aba, precisão dos valores, IDs, hierarquia, observações, vínculos e renomeação de Cozinha para Cozinha Principal. Não foi necessário reiniciar o computador para esses testes.
 
