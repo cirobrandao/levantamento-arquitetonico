@@ -27,6 +27,18 @@ npm test
 npm run preview
 ```
 
+## Fotos de levantamento — etapa 14
+
+O painel **FOTOS** permite tirar foto com `capture="environment"` ou selecionar uma ou várias imagens da galeria/arquivos. Toda foto pertence a um ambiente e pode ser vinculada ao ambiente em geral, parede externa, porta, janela, vão, parede interna ou objeto. Os editores desses elementos oferecem **Adicionar foto** e a contagem de fotos vinculadas. Vínculos usam UUIDs e acompanham renomeações.
+
+A pesquisa considera ID/nome do ambiente, identificação e nome do elemento, tags, observação e nome original do arquivo. P01 e OBJ-001 são encontrados sem criar tags manuais. Há filtros de ambiente, tipo de elemento e presença de vínculo. Tags podem ser separadas por vírgula, ponto e vírgula ou quebra de linha; são confirmadas ao sair do campo. As miniaturas são exibidas em lotes de 24, e o arquivo original só é carregado ao abrir a imagem.
+
+O schema 4 prepara coleções de fotos em projetos anteriores sem modificar medidas ou IDs. O IndexedDB passa à versão 2 e acrescenta o armazenamento `photoFiles`, preservando o armazenamento `workspace`. Metadados ficam nos ambientes; o original e a miniatura JPEG de até 400 px ficam como Blobs separados. Imagens não são gravadas em localStorage nem enviadas ao GitHub ou a um servidor. Fotos e projetos permanecem locais a cada navegador/dispositivo/origem.
+
+Excluir uma foto exige confirmação; seus Blobs são removidos na mesma transação que salva os metadados atualizados. Excluir somente um elemento conserva a fotografia como sem vínculo. Excluir um ambiente/pavimento/projeto também remove os arquivos de suas fotos após salvar a exclusão. Erros de formato ou armazenamento são exibidos, e os demais dados permanecem editáveis.
+
+Verificação: `npm test` executa onze suítes. `tests/photos.mjs` cobre busca e filtros, renomeação, desvinculação, preservação de medidas, migração de schemas/banco, Blobs separados, reabertura e exclusão de arquivos. `fake-indexeddb` é utilizado apenas nos testes. A interface foi verificada em largura mobile pela rede local, com botões de captura grandes e mini croqui persistente; a câmera física precisa ser validada no celular. Não há backup/exportação nesta etapa.
+
 ## Objetos, móveis e equipamentos — etapa 13
 
 Cada ambiente possui objetos independentes (`RoomObject`), com UUID estável, ID visual `OBJ-001` etc., nome, categoria, forma, dimensões, centro X/Y, rotação e observação. A numeração é local ao ambiente e seu contador é preservado após exclusões. Fotos poderão usar o UUID posteriormente; não há recursos de fotos nesta etapa.
