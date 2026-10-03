@@ -1,3 +1,4 @@
+import { ElementPhotos } from './PhotoActions'
 import { MeasurementInput, useMeasurements } from './Measurement'
 import { ManualMarkers } from './ChecklistPanel'
 import type { InternalWall, Room } from './models'
@@ -30,7 +31,7 @@ export default function InternalWallEditor({ room, onChange, checks }: { room: R
       const reference = origin.type === 'perimeter_wall' ? references.find(reference => reference.id === origin.referenceCornerId) : undefined
       return <section className="internal-wall-card" data-pending-element={internalWall.id} key={internalWall.id} aria-label={`Parede interna ${internalWall.label}`}>
         <div className="internal-wall-heading"><h4>{internalWall.label} <span>· Parede interna</span></h4><button onClick={() => onChange({ ...room, internalWalls: room.internalWalls.filter(item => item.id !== internalWall.id) })} aria-label={`Remover ${internalWall.label}`}>Remover</button></div>
-        <ManualMarkers room={room} elementId={internalWall.id}/>{origin.type === 'perimeter_wall' && <>
+        <ElementPhotos room={room} type="internal_wall" entityId={internalWall.id}/><ManualMarkers room={room} elementId={internalWall.id}/>{origin.type === 'perimeter_wall' && <>
           <div className="internal-wall-fields">
             <label>Parede de origem<select value={origin.wallId} onChange={event => { const wallId = event.target.value; update({ origin: { ...origin, wallId, referenceCornerId: getWallReferences(room.walls, room.corners, wallId)[0]?.id ?? '' } }) }}>{!wall && <option value={origin.wallId}>Parede fora do perímetro</option>}{room.walls.map(wall => <option key={wall.id} value={wall.id}>Parede {wall.label}</option>)}</select></label>
             <label>Canto de referência<select value={origin.referenceCornerId} onChange={event => update({ origin: { ...origin, referenceCornerId: event.target.value } })}>{!reference && <option value={origin.referenceCornerId}>Selecione um canto atual</option>}{references.map(reference => <option key={reference.id} value={reference.id}>{reference.label} — {reference.endpoint === 'start' ? 'início' : 'final'} da parede {wall?.label}</option>)}</select></label>

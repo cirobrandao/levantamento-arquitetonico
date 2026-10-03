@@ -1,11 +1,14 @@
+import { openDatabase } from './database'
+import { acknowledgePhotoDeletions, pendingPhotoDeletions, thumbnailKey } from './photoStorage'
+import { migrateRoomPhotos, photoFileIds } from './photos'
 import { migrateRoomObjects } from './roomObjects'
 import type { Project, Room } from './models'
 import { generateId } from './domain'
 import { ensureProjectMetadata } from './projectMetadata'
 import { isMeasurementUnit } from './units'
 
-export const SCHEMA_VERSION = 3
-export const DATABASE_NAME = 'campo-levantamentos'
+export const SCHEMA_VERSION = 4
+export { DATABASE_NAME } from './database'
 export const JOURNAL_KEY = 'campo-autosave-journal-v1'
 export interface WorkspaceData { projects: Project[]; projectId: string; floorId: string; roomId: string }
 export interface StoredWorkspace { schemaVersion: number; revision: string; savedAt: string; data: WorkspaceData }
@@ -22,7 +25,7 @@ export function createSnapshot(data: WorkspaceData): StoredWorkspace {
 export function readSnapshot(value: unknown): StoredWorkspace {
   if (!value || typeof value !== 'object') throw new Error('O arquivo local de projetos é inválido. Os dados existentes foram preservados.')
   const record = value as StoredWorkspace
-  if (record.schemaVersion !== 1 && record.schemaVersion !== 2 && record.schemaVersion !== SCHEMA_VERSION) throw new Error('Esta versão dos dados locais não é compatível com a aplicação. Os projetos existentes foram preservados.')
+  if (record.schemaVersion !== 1 && record.schemaVersion !== 2 && record.schemaVersion !== 3 && record.schemaVersion !== SCHEMA_VERSION) throw new Error('Esta versão dos dados locais não é compatível com a aplicação. Os projetos existentes foram preservados.')
   const number = (value: unknown) => value === null || typeof value === 'number'
   const strings = (value: unknown): value is string[] => Array.isArray(value) && value.length === 2 && value.every(item => typeof item === 'string')
   const entity = (value: unknown): value is { id: string } => !!value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string'
@@ -43,13 +46,14 @@ export function readSnapshot(value: unknown): StoredWorkspace {
       : wall.origin.type === 'free' && !!wall.origin.position && typeof wall.origin.position.xM === 'number' && typeof wall.origin.position.yM === 'number'))
     && (room.objectCounter === undefined || counter(room.objectCounter))
     && (room.objects === undefined || Array.isArray(room.objects) && room.objects.every(object => entity(object) && typeof object.displayId === 'string' && object.roomId === room.id && typeof object.name === 'string' && ['furniture', 'equipment', 'object', 'other'].includes(object.category) && ['rectangle', 'circle', 'line'].includes(object.shape) && !!object.dimensions && typeof object.dimensions === 'object' && ['widthM', 'depthM', 'diameterM', 'lengthM'].every(key => object.dimensions[key as keyof typeof object.dimensions] === undefined || number(object.dimensions[key as keyof typeof object.dimensions])) && !!object.position && number(object.position.xM) && number(object.position.yM) && number(object.rotationDegrees) && (object.note === undefined || typeof object.note === 'string')))
+    && (room.photos === undefined || Array.isArray(room.photos) && room.photos.every(photo => entity(photo) && typeof photo.originalFileName === 'string' && typeof photo.createdAt === 'string' && photo.roomId === room.id && typeof photo.fileId === 'string' && typeof photo.mimeType === 'string' && typeof photo.size === 'number' && photo.size >= 0 && Array.isArray(photo.tags) && photo.tags.every(tag => typeof tag === 'string') && (photo.note === undefined || typeof photo.note === 'string') && (photo.linkedEntityId === undefined || typeof photo.linkedEntityId === 'string') && (photo.linkedEntityType === undefined || ['room', 'wall', 'door', 'window', 'gap', 'internal_wall', 'room_object'].includes(photo.linkedEntityType))))
     && room.pendingItems.every(item => entity(item) && typeof item.description === 'string' && typeof item.resolved === 'boolean')
     && room.subrooms.every(roomValid)
   const data = record.data
   if (typeof record.revision !== 'string' || typeof record.savedAt !== 'string' || !data || !Array.isArray(data.projects) || !data.projects.length || !['projectId', 'floorId', 'roomId'].every(key => typeof data[key as keyof WorkspaceData] === 'string') || !data.projects.every(project => project && typeof project.id === 'string' && typeof project.name === 'string' && Array.isArray(project.relationships) && Array.isArray(project.floors) && project.floors.every(floor => floor && typeof floor.id === 'string' && typeof floor.name === 'string' && Array.isArray(floor.rooms) && floor.rooms.every(roomValid)))) throw new Error('Os dados locais estão incompletos. Não foram sobrescritos.')
   if (!data.projects.every(project => project.relationships.every(relation => entity(relation) && typeof relation.sourceRoomId === 'string' && typeof relation.targetRoomId === 'string' && ['opening_connection', 'shared_wall', 'adjacency', 'manual_reference'].includes(relation.type)))) throw new Error('As relações locais estão incompletas. Os dados existentes foram preservados.')
   if (!data.projects.every(project => (project.measurementUnit === undefined || isMeasurementUnit(project.measurementUnit)) && (project.roomDisplayCounter === undefined || counter(project.roomDisplayCounter)))) throw new Error('Configuração do projeto inválida. Os dados existentes foram preservados.')
-  if (record.schemaVersion < SCHEMA_VERSION) return { ...record, schemaVersion: SCHEMA_VERSION, data: { ...data, projects: data.projects.map(project => { const migrated = ensureProjectMetadata(project); return { ...migrated, floors: migrated.floors.map(floor => ({ ...floor, rooms: floor.rooms.map(migrateRoomObjects) })) } }) } }
+  if (record.schemaVersion < SCHEMA_VERSION) return { ...record, schemaVersion: SCHEMA_VERSION, data: { ...data, projects: data.projects.map(project => { const migrated = ensureProjectMetadata(project); return { ...migrated, floors: migrated.floors.map(floor => ({ ...floor, rooms: floor.rooms.map(migrateRoomObjects).map(migrateRoomPhotos) })) } }) } }
   return record
 }
 // The synchronous journal protects edits made immediately before closing the page.
@@ -59,21 +63,6 @@ export function encodeSnapshot(snapshot: StoredWorkspace): string {
 }
 export function decodeSnapshot(text: string): StoredWorkspace {
   return readSnapshot(JSON.parse(text, (_, value) => value && typeof value === 'object' && Object.keys(value).length === 1 && '$campoNumber' in value ? value.$campoNumber === 'NaN' ? NaN : value.$campoNumber === 'Infinity' ? Infinity : value.$campoNumber === '-Infinity' ? -Infinity : value.$campoNumber === '-0' ? -0 : value : value))
-}
-let database: Promise<IDBDatabase> | undefined
-function openDatabase(): Promise<IDBDatabase> {
-  if (!database) database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, 1)
-    request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('workspace')) request.result.createObjectStore('workspace') }
-    request.onerror = () => reject(request.error ?? new Error('Não foi possível abrir o armazenamento local.'))
-    request.onblocked = () => reject(new Error('Feche outras abas antigas da aplicação e tente novamente.'))
-    request.onsuccess = () => {
-      const db = request.result
-      db.onversionchange = () => { db.close(); database = undefined }
-      resolve(db)
-    }
-  }).catch(error => { database = undefined; throw error })
-  return database
 }
 export async function loadWorkspace(): Promise<StoredWorkspace | null> {
   if (!globalThis.indexedDB) {
@@ -108,10 +97,12 @@ export async function saveWorkspace(snapshot: StoredWorkspace): Promise<void> {
   readSnapshot(snapshot)
   if (!globalThis.indexedDB) { localStorage.setItem('campo-local-workspace-v1', encodeSnapshot(snapshot)); return }
   const db = await openDatabase()
+  const deletedFiles = pendingPhotoDeletions(photoFileIds(snapshot.data.projects))
   await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction('workspace', 'readwrite', { durability: 'strict' })
+    const transaction = db.transaction(['workspace', 'photoFiles'], 'readwrite', { durability: 'strict' })
     transaction.objectStore('workspace').put(snapshot, 'current')
-    transaction.oncomplete = () => resolve()
+    const files = transaction.objectStore('photoFiles'); deletedFiles.forEach(fileId => { files.delete(fileId); files.delete(thumbnailKey(fileId)) })
+    transaction.oncomplete = () => { acknowledgePhotoDeletions(deletedFiles); resolve() }
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error ?? new Error('Gravação local interrompida.'))
   })
