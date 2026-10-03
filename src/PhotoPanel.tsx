@@ -1,0 +1,100 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Photo, Project, Room } from './models'
+import type { PhotoRequest } from './PhotoActions'
+import { generateId } from './domain'
+import { projectRooms } from './relationships'
+import { parsePhotoTags, photoTargets, photoTypeNames, searchPhotos } from './photos'
+import type { PhotoFilters } from './photos'
+import { createThumbnail, discardUnlinkedPhotoFile, readPhotoFile, savePhotoFile } from './photoStorage'
+
+function usePhotoUrl(fileId: string, thumbnail: boolean) {
+  const [url, setUrl] = useState(''), [error, setError] = useState('')
+  useEffect(() => {
+    let disposed = false, objectUrl = ''
+    setUrl(''); setError('')
+    void readPhotoFile(fileId,thumbnail).then(blob => { if (!disposed) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl) } }).catch(error => { if (!disposed) setError(error instanceof Error ? error.message : 'Não foi possível abrir a imagem.') })
+    return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [fileId,thumbnail])
+  return { url, error }
+}
+function Thumbnail({ photo }: { photo: Photo }) {
+  const { url, error } = usePhotoUrl(photo.fileId,true)
+  return url ? <img className="photo-thumbnail" src={url} alt={photo.originalFileName} loading="lazy" decoding="async"/> : <div className="photo-thumbnail photo-placeholder">{error ? 'Miniatura indisponível' : 'Carregando…'}</div>
+}
+function FullPhoto({ photo, onClose }: { photo: Photo; onClose: () => void }) {
+  const { url, error } = usePhotoUrl(photo.fileId,false)
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => { dialog.current?.showModal() }, [])
+  return <dialog className="photo-viewer" ref={dialog} aria-label={`Foto ${photo.originalFileName}`} onCancel={onClose}><div><strong>{photo.originalFileName}</strong><button onClick={onClose} autoFocus>Fechar foto</button></div>{url ? <img src={url} alt={photo.note || photo.originalFileName}/> : <p role="status">{error || 'Abrindo foto…'}</p>}</dialog>
+}
+function PhotoCard({ photo, room, onUpdate, onDelete, onView, onNavigate }: { photo: Photo; room: Room; onUpdate: (roomId: string,id: string,changes: Partial<Photo>) => void; onDelete: (roomId: string,id: string) => void; onView: (photo: Photo) => void; onNavigate: (roomId: string) => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [tags, setTags] = useState(photo.tags.join(', '))
+  useEffect(() => { setTags(photo.tags.join(', ')) }, [photo.tags])
+  const targets = photoTargets(room)
+  const key = photo.linkedEntityType && photo.linkedEntityId ? `${photo.linkedEntityType}:${photo.linkedEntityId}` : ''
+  return <article className="photo-card" aria-label={photo.originalFileName}>
+    <button className="photo-preview-button" onClick={() => onView(photo)} aria-label={`Abrir foto ${photo.originalFileName}`}><Thumbnail photo={photo}/></button>
+    <h4>{photo.originalFileName}</h4><button className="photo-room-link" onClick={() => onNavigate(room.id)}>{room.displayId} — {room.name || 'Sem nome'}</button>
+    <p className="photo-date">Registrada em {new Date(photo.createdAt).toLocaleString('pt-BR')}</p>
+    <label>Vínculo<select value={targets.some(target => `${target.type}:${target.id}` === key) ? key : ''} onChange={event => { const target = targets.find(target => `${target.type}:${target.id}` === event.target.value); onUpdate(room.id,photo.id,{ linkedEntityType: target?.type, linkedEntityId: target?.id }) }}><option value="">Sem vínculo específico</option>{targets.map(target => <option key={`${target.type}:${target.id}`} value={`${target.type}:${target.id}`}>{target.label}</option>)}</select></label>
+    <label>Tags (separadas por vírgula)<input value={tags} onChange={event => setTags(event.target.value)} onBlur={() => onUpdate(room.id,photo.id,{ tags: parsePhotoTags(tags) })} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}/></label>
+    <label>Observação<textarea rows={2} value={photo.note ?? ''} onChange={event => onUpdate(room.id,photo.id,{ note: event.target.value })}/></label>
+    <button onClick={() => setConfirmDelete(true)}>Excluir foto</button>
+    {confirmDelete && <div className="object-delete-confirmation" role="alertdialog" aria-label={`Excluir ${photo.originalFileName}?`}><p>Excluir esta foto e seu arquivo deste navegador?</p><button onClick={() => setConfirmDelete(false)} autoFocus>Cancelar</button><button onClick={() => onDelete(room.id,photo.id)}>Confirmar exclusão</button></div>}
+  </article>
+}
+export default function PhotoPanel({ project, request, onAdd, onUpdate, onDelete, onNavigate }: { project: Project; request?: PhotoRequest; onAdd: (photo: Photo) => void; onUpdate: (roomId: string,id: string,changes: Partial<Photo>) => void; onDelete: (roomId: string,id: string) => void; onNavigate: (roomId: string) => void }) {
+  const rooms = useMemo(() => projectRooms(project), [project])
+  const [uploadRoomId, setUploadRoomId] = useState(request?.roomId ?? rooms[0]?.id ?? '')
+  const [targetKey, setTargetKey] = useState('')
+  const [filters, setFilters] = useState<PhotoFilters>({ query: '', roomId: '', type: '', link: 'all' })
+  const [visible, setVisible] = useState(24)
+  const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [error, setError] = useState('')
+  const [viewing, setViewing] = useState<Photo>()
+  const camera = useRef<HTMLInputElement>(null), gallery = useRef<HTMLInputElement>(null), panel = useRef<HTMLElement>(null)
+  const uploadRoom = rooms.find(room => room.id === uploadRoomId)
+  const targets = uploadRoom ? photoTargets(uploadRoom) : []
+  const results = useMemo(() => searchPhotos(project,filters), [project,filters])
+  useEffect(() => {
+    if (!request) return
+    setUploadRoomId(request.roomId); setTargetKey(request.type && request.entityId ? `${request.type}:${request.entityId}` : '')
+    setFilters({ query: '', roomId: request.roomId, type: request.type ?? '', link: request.type ? 'linked' : 'all' })
+    panel.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  }, [request])
+  useEffect(() => { setVisible(24) }, [filters])
+  useEffect(() => { if (viewing && !rooms.some(room => room.photos?.some(photo => photo.id === viewing.id))) setViewing(undefined) }, [rooms,viewing])
+  async function importFiles(files: File[]) {
+    if (!uploadRoom || busy) return
+    const roomId = uploadRoom.id, target = targets.find(target => `${target.type}:${target.id}` === targetKey)
+    setBusy(true); setError(''); setStatus('Preparando fotos…')
+    let imported = 0; const failures: string[] = []
+    for (const file of files) {
+      let fileId: string | undefined
+      try {
+        if (file.type && !file.type.startsWith('image/')) throw new Error('Escolha um arquivo de imagem.')
+        const thumbnail = await createThumbnail(file)
+        fileId = generateId(); await savePhotoFile(fileId,file,thumbnail)
+        onAdd({ id: fileId, fileId, originalFileName: file.name, createdAt: new Date().toISOString(), roomId, linkedEntityType: target?.type, linkedEntityId: target?.id, tags: [], mimeType: file.type || 'image/*', size: file.size })
+        imported++; setStatus(`${imported} foto(s) registrada(s)…`)
+      } catch (error) {
+        if (fileId) { try { await discardUnlinkedPhotoFile(fileId) } catch { /* Metadata was not added; preserve failed-cleanup bytes rather than a broken reference. */ } }
+        failures.push(`${file.name}: ${error instanceof Error ? error.message : 'Não foi possível registrar a foto.'}`)
+      }
+    }
+    setBusy(false); setStatus(`${imported} foto(s) registrada(s).`); setError(failures.join(' '))
+  }
+  return <section className="photo-panel" ref={panel} aria-label="Fotos do projeto">
+    <h2>FOTOS</h2><p className="angle-help">Fotos ficam neste navegador e dispositivo. Cada imagem pertence a um ambiente.</p>
+    <div className="photo-upload-fields"><label>Ambiente para novas fotos<select value={uploadRoom?.id ?? ''} disabled={busy} onChange={event => { setUploadRoomId(event.target.value); setTargetKey('') }}><option value="" disabled>Selecione um ambiente</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.displayId} — {room.name || 'Sem nome'}</option>)}</select></label><label>Vincular novas fotos a<select value={targets.some(target => `${target.type}:${target.id}` === targetKey) ? targetKey : ''} disabled={busy || !uploadRoom} onChange={event => setTargetKey(event.target.value)}><option value="">Sem vínculo específico</option>{targets.map(target => <option key={`${target.type}:${target.id}`} value={`${target.type}:${target.id}`}>{target.label}</option>)}</select></label></div>
+    <div className="photo-capture-actions"><button disabled={busy || !uploadRoom} onClick={() => camera.current?.click()}>📷 Tirar foto</button><button disabled={busy || !uploadRoom} onClick={() => gallery.current?.click()}>🖼 Escolher imagem</button></div>
+    <input ref={camera} className="sr-only" type="file" accept="image/*" capture="environment" tabIndex={-1} aria-label="Arquivo da câmera" onChange={event => { const files = [...event.target.files ?? []]; event.target.value = ''; void importFiles(files) }}/>
+    <input ref={gallery} className="sr-only" type="file" accept="image/*" multiple tabIndex={-1} aria-label="Imagens da galeria" onChange={event => { const files = [...event.target.files ?? []]; event.target.value = ''; void importFiles(files) }}/>
+    {!uploadRoom && <p>Crie ou selecione um ambiente para registrar fotos.</p>}<p role="status">{status}</p>{error && <p className="photo-error" role="alert">{error}</p>}
+    <label>Pesquisar fotos<input type="search" value={filters.query} placeholder="P01, AMB-001, compressor, tag ou arquivo…" onChange={event => setFilters({ ...filters, query: event.target.value })}/></label>
+    <div className="photo-filters"><label>Filtrar ambiente<select value={filters.roomId} onChange={event => setFilters({ ...filters, roomId: event.target.value })}><option value="">Todos os ambientes</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.displayId} — {room.name || 'Sem nome'}</option>)}</select></label><label>Tipo de elemento<select value={filters.type} onChange={event => setFilters({ ...filters, type: event.target.value })}><option value="">Todos os tipos</option>{Object.entries(photoTypeNames).map(([type,name]) => <option key={type} value={type}>{name}</option>)}</select></label><label>Situação do vínculo<select value={filters.link} onChange={event => setFilters({ ...filters, link: event.target.value as PhotoFilters['link'] })}><option value="all">Todas as fotos</option><option value="linked">Com vínculo</option><option value="unlinked">Sem vínculo</option></select></label></div>
+    <p>{results.length} foto(s) encontrada(s)</p><div className="photo-grid">{results.slice(0,visible).map(({ photo,room }) => <PhotoCard key={photo.id} photo={photo} room={room} onUpdate={onUpdate} onDelete={onDelete} onView={setViewing} onNavigate={onNavigate}/>)}</div>
+    {visible < results.length && <button onClick={() => setVisible(value => value+24)}>Mostrar mais fotos</button>}
+    {viewing && <FullPhoto key={viewing.id} photo={viewing} onClose={() => setViewing(undefined)}/>}
+  </section>
+}

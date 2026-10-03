@@ -33,6 +33,12 @@ export interface RoomObject {
   // Centro do objeto no sistema local: origem no início da primeira parede.
   position: { xM: number | null; yM: number | null }; rotationDegrees: number | null; note?: string
 }
-export interface Room { id: string; displayId?: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; objects?: RoomObject[]; objectCounter?: number; pendingItems: PendingItem[]; subrooms: Room[] }
+export type PhotoEntityType = 'room' | 'wall' | 'door' | 'window' | 'gap' | 'internal_wall' | 'room_object'
+export interface Photo {
+  id: string; originalFileName: string; createdAt: string; roomId: string;
+  linkedEntityType?: PhotoEntityType; linkedEntityId?: string;
+  tags: string[]; note?: string; fileId: string; mimeType: string; size: number
+}
+export interface Room { id: string; displayId?: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; objects?: RoomObject[]; objectCounter?: number; photos?: Photo[]; pendingItems: PendingItem[]; subrooms: Room[] }
 export interface Floor { id: string; name: string; rooms: Room[] }
 export interface Project { id: string; name: string; measurementUnit?: import('./units').MeasurementUnit; roomDisplayCounter?: number; floors: Floor[]; relationships: RoomRelationship[] }
