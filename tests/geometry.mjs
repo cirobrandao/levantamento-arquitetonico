@@ -1,0 +1,143 @@
+import { readFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
+import ts from 'typescript'
+const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
+const moduleUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+const cornersUrl = moduleUrl(transpile('../src/corners.ts'))
+const { getCorners } = await import(cornersUrl)
+const tolerancesUrl = moduleUrl(transpile('../src/tolerances.ts'))
+const link = source => source.replaceAll("'./corners'", JSON.stringify(cornersUrl)).replaceAll('"./corners"', JSON.stringify(cornersUrl)).replaceAll("'./tolerances'", JSON.stringify(tolerancesUrl)).replaceAll('"./tolerances"', JSON.stringify(tolerancesUrl))
+const diagonalsUrl = moduleUrl(link(transpile('../src/diagonals.ts')))
+const source = link(transpile('../src/geometry.ts')).replace("'./diagonals'", JSON.stringify(diagonalsUrl)).replace('"./diagonals"', JSON.stringify(diagonalsUrl))
+const { buildPerimeter } = await import(moduleUrl(source))
+const walls = values => values.map((lengthM, i) => ({ id: String(i), label: String.fromCharCode(65 + i), lengthM }))
+const original = walls([4.2, 3, 4.2, 3])
+const snapshot = JSON.stringify(original)
+const rectangle = buildPerimeter(original)
+assert.equal(rectangle.closed, true)
+assert.deepEqual(rectangle.corners.map(c => c.label), ['AB', 'BC', 'CD', 'DA'])
+assert.deepEqual(rectangle.segments[1].direction, { x: 0, y: 1 })
+assert.equal(JSON.stringify(original), snapshot)
+const mismatch = buildPerimeter(walls([4.2, 3, 4, 3]))
+assert.equal(mismatch.closed, false)
+assert.ok(Math.abs(mismatch.closureM - 0.2) < 1e-8)
+assert.equal(mismatch.segments[2].wall.lengthM, 4)
+assert.equal(buildPerimeter(walls([4, 3, null, 0])).allMeasured, false)
+assert.equal(buildPerimeter(walls([1, 2, 3, 4, 5, 6])).segments.length, 6)
+for (const lengths of [[0.01, 1000, 0.01, 1000], [null], []]) {
+  const result = buildPerimeter(walls(lengths))
+  assert.ok(Number.isFinite(result.scale))
+  for (const segment of result.segments) for (const point of [segment.start, segment.end]) {
+    const screen = result.project(point)
+    assert.ok(screen.x >= 80 && screen.x <= 360 && screen.y >= 85 && screen.y <= 265)
+  }
+}
+console.log('Geometria verificada: fechamento, medidas preservadas, cantos, escala e mais de quatro paredes.')
+
+function withAngles(lengths, angles) {
+  const perimeter = walls(lengths)
+  const corners = getCorners(perimeter, []).map((corner, index) => ({ ...corner, angleDegrees: angles[index], angleSource: angles[index] === null ? null : 'informed' }))
+  const snapshot = JSON.stringify({ perimeter, corners })
+  const result = buildPerimeter(perimeter, corners)
+  assert.equal(JSON.stringify({ perimeter, corners }), snapshot, 'Medidas e ângulos originais preservados')
+  result.segments.forEach((segment, index) => assert.ok(Math.abs(Math.hypot(segment.end.x - segment.start.x, segment.end.y - segment.start.y) - lengths[index]) < 1e-8))
+  return result
+}
+assert.equal(withAngles([2, 2, 2, 2, 2], [108, 108, 108, 108, 108]).closed, true, 'Pentágono fecha')
+assert.equal(withAngles([2, 2, 2, 2, 2, 2], [120, 120, 120, 120, 120, 120]).closed, true, 'Hexágono fecha')
+const lShape = withAngles([4, 2, 2, 2, 2, 4], [90, 90, 270, 90, 90, 90])
+assert.equal(lShape.closed, true, 'Ambiente em L fecha')
+assert.deepEqual(lShape.segments.map(s => s.end), [{ x: 4, y: 0 }, { x: 4, y: 2 }, { x: 2, y: 2 }, { x: 2, y: 4 }, { x: 0, y: 4 }, { x: 0, y: 0 }])
+assert.equal(lShape.corners[2].angleDegrees, 270)
+const triangle = withAngles([4, 2 * Math.SQRT2, 2 * Math.SQRT2], [45, 90, 45])
+assert.equal(triangle.closed, true, 'Encontro interno de 45° fecha triângulo')
+function internalAngle(result) {
+  const a = result.segments[0].direction, b = result.segments[1].direction
+  return Math.acos(-a.x * b.x - a.y * b.y) * 180 / Math.PI
+}
+assert.ok(Math.abs(internalAngle(triangle) - 45) < 1e-8)
+const angle82 = withAngles([4, 3, 4, 3], [82, 90, 90, 90])
+assert.ok(Math.abs(internalAngle(angle82) - 82) < 1e-8)
+assert.equal(angle82.closed, false)
+assert.equal(angle82.corners[0].angleSource, 'informed')
+assert.equal(rectangle.corners[0].angleSource, 'assumed')
+const undefinedAngle = withAngles([4, 3, 4, 3], [null, 90, 90, 90])
+assert.equal(undefinedAngle.closed, false)
+assert.equal(undefinedAngle.allAnglesDefined, false)
+assert.equal(undefinedAngle.corners[0].angleDegrees, null)
+assert.equal(undefinedAngle.corners[0].angleSource, null)
+assert.deepEqual(undefinedAngle.segments[1].direction, { x: 0, y: 1 })
+assert.equal(withAngles([4, 3, 4, 3], [90, 90, 90, 82]).closed, false, 'Ângulo de fechamento é considerado')
+for (const angle of [0, 360, -1, NaN]) {
+  const result = withAngles([4, 3, 4, 3], [angle, 90, 90, 90])
+  assert.equal(result.allAnglesDefined, false)
+  assert.ok(result.segments.every(s => Number.isFinite(s.end.x) && Number.isFinite(s.end.y)))
+}
+console.log('Ângulos verificados: retângulo, 5 e 6 paredes, L, 45°, 82°, origem, indefinidos e fechamento sem correção.')
+
+const { closureSeverity, geometryTolerance } = await import(tolerancesUrl)
+const rectangleWalls = walls([4, 3, 4, 3])
+const rectangleCorners = getCorners(rectangleWalls, [])
+const diagonal = (from, to, lengthM, id = 'diagonal-1') => ({ id, cornerIds: [rectangleCorners[from].id, rectangleCorners[to].id], lengthM, source: 'measured' })
+const measuredDiagonal = diagonal(0, 2, Math.sqrt(25 - 24 * Math.cos(87.4 * Math.PI / 180)))
+const originalData = { walls: rectangleWalls, corners: rectangleCorners, diagonals: [measuredDiagonal] }
+const originalSnapshot = JSON.stringify(originalData)
+const calculated = buildPerimeter(originalData.walls, originalData.corners, originalData.diagonals)
+assert.equal(JSON.stringify(originalData), originalSnapshot, 'Paredes, diagonais e ângulos originais imutáveis')
+assert.equal(calculated.calculations.length, 4)
+assert.ok(Math.abs(calculated.corners[1].angleDegrees - 87.4) < 1e-8)
+assert.equal(calculated.corners[1].angleSource, 'calculated')
+assert.equal(rectangleCorners[1].angleDegrees, 90)
+assert.equal(rectangleCorners[1].angleSource, 'assumed')
+assert.equal(calculated.closed, true)
+assert.ok(calculated.diagonalSegments[0].differenceM < 1e-8)
+assert.ok(calculated.calculations.every(c => c.diagonalIds.includes(measuredDiagonal.id)))
+const reversed = buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(2, 0, measuredDiagonal.lengthM)])
+assert.deepEqual(reversed.corners.map(c => c.angleDegrees), calculated.corners.map(c => c.angleDegrees))
+
+const informedCorners = rectangleCorners.map(c => ({ ...c, angleSource: 'informed', angleDegrees: 90 }))
+const protectedResult = buildPerimeter(rectangleWalls, informedCorners, [measuredDiagonal])
+assert.equal(protectedResult.calculations.length, 0)
+assert.ok(protectedResult.corners.every(c => c.angleDegrees === 90 && c.angleSource === 'informed'))
+assert.ok(protectedResult.diagonalChecks[0].messages.some(m => m.includes('preservado')))
+const partial = buildPerimeter(rectangleWalls, [informedCorners[1]], [measuredDiagonal])
+assert.equal(partial.corners[1].angleDegrees, 90)
+assert.equal(partial.corners[1].angleSource, 'informed')
+assert.equal(partial.closed, false)
+assert.ok(partial.closureM > geometryTolerance.numericalEpsilon)
+
+const conflicting = buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(0, 2, 5, 'first-diagonal'), measuredDiagonal])
+assert.ok(conflicting.corners.every(c => Math.abs(c.angleDegrees - 90) < 1e-8))
+assert.ok(conflicting.diagonalChecks[1].messages.some(m => m.includes('sem média')))
+assert.ok(conflicting.diagonalChecks[1].differenceM > 0)
+const invalidTriangle = buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(0, 2, 9)])
+assert.equal(invalidTriangle.calculations.length, 0)
+assert.ok(invalidTriangle.diagonalChecks[0].messages.some(m => m.includes('triângulo válido')))
+for (const distance of [null, 0, -2, NaN]) {
+  const result = buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(0, 2, distance)])
+  assert.equal(result.calculations.length, 0)
+  assert.equal(result.diagonalSegments.length, 0)
+}
+assert.equal(buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(0, 0, 3)]).diagonalChecks[0].valid, false)
+assert.equal(buildPerimeter(rectangleWalls, rectangleCorners, [{ ...diagonal(0, 2, 5), cornerIds: ['missing', rectangleCorners[2].id] }]).diagonalChecks[0].valid, false)
+assert.equal(buildPerimeter(rectangleWalls, rectangleCorners, [diagonal(0, 1, 3)]).calculations.length, 0)
+const insufficient = buildPerimeter(walls([4, null, 4, null]), [], [diagonal(0, 2, 5)])
+assert.equal(insufficient.calculations.length, 0)
+assert.ok(insufficient.diagonalChecks[0].messages.some(m => m.includes('comprimentos')))
+
+const pentagonWalls = walls([1, 2, 3, 2, 1])
+const pentagonCorners = getCorners(pentagonWalls, []).map((c, i) => ({ ...c, angleSource: i === 1 ? null : 'informed', angleDegrees: [90, null, 180, 90, 90][i] }))
+const chainDiagonal = { id: 'chain', cornerIds: [pentagonCorners[0].id, pentagonCorners[3].id], lengthM: Math.sqrt(29 - 20 * Math.cos(82 * Math.PI / 180)), source: 'measured' }
+const chainResult = buildPerimeter(pentagonWalls, pentagonCorners, [chainDiagonal])
+assert.ok(Math.abs(chainResult.corners[1].angleDegrees - 82) < 1e-8, 'Trecho de três paredes com somente um ângulo desconhecido')
+assert.equal(chainResult.corners[1].angleSource, 'calculated')
+assert.ok(chainResult.diagonalSegments[0].differenceM < 1e-8)
+assert.equal(pentagonCorners[1].angleDegrees, null)
+assert.equal(closureSeverity(0), 'closed')
+assert.equal(closureSeverity(0.026), 'approximate')
+assert.equal(closureSeverity(0.14), 'warning')
+const smallGap = buildPerimeter(walls([4, 3, 3.974, 3]))
+assert.ok(Math.abs(smallGap.closureM - 0.026) < 1e-8)
+assert.equal(smallGap.closureSeverity, 'approximate')
+assert.equal(smallGap.segments[2].wall.lengthM, 3.974)
+console.log('Diagonais verificadas: lei dos cossenos, quadrilátero, trechos longos, prioridade informada, conflitos, dados insuficientes e tolerância de fechamento.')

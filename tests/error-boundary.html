@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="UTF-8"><title>Teste isolado de recuperação</title><div id="root"></div><script type="module">
+  import React from 'react'
+  import { createRoot } from 'react-dom/client'
+  import ErrorBoundary from '/src/ErrorBoundary.tsx'
+  import '/src/styles.css'
+  // Test-only fixture: no application state or persisted projects are accessed.
+  function Failure() { throw new Error('Falha de renderização simulada para revisão da etapa 11') }
+  function Test() {
+    const [failed, setFailed] = React.useState(false)
+    return React.createElement(ErrorBoundary, null, failed ? React.createElement(Failure) : React.createElement('button', { onClick: () => setFailed(true) }, 'Simular falha de renderização'))
+  }
+  createRoot(document.getElementById('root')).render(React.createElement(Test))
+</script></html>

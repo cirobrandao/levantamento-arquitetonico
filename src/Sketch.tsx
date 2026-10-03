@@ -1,0 +1,94 @@
+import { useEffect, useId, useMemo, useState } from 'react'
+import type { Room } from './models'
+import { buildPerimeter } from './geometry'
+import { validAngle } from './corners'
+import GeometryStatus from './GeometryStatus'
+import { buildOpeningLayout } from './openings'
+import OpeningSketch from './OpeningSketch'
+import { buildInternalWallLayout, fitInternalWallsSketch, placeInternalWallLabels } from './internalWalls'
+import InternalWallSketch from './InternalWallSketch'
+import { getSketchLabelLayout } from './sketchLabels'
+import type { RoomGeometry } from './roomGeometry'
+
+const meters = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const degrees = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
+export default function Sketch({ room, survey, focusElementId }: { room?: Room; survey?: RoomGeometry; focusElementId?: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [selection, setSelection] = useState<{ roomId: string; wallId: string }>()
+  useEffect(() => {
+    if (room && focusElementId && room.walls.some(wall => wall.id === focusElementId)) setSelection({ roomId: room.id, wallId: focusElementId })
+  }, [room?.id, focusElementId])
+  const svgId = useId().replace(/:/g, '')
+  const perimeter = useMemo(() => survey?.perimeter ?? buildPerimeter(room?.walls ?? [], room?.corners ?? [], room?.diagonals ?? []), [survey, room?.walls, room?.corners, room?.diagonals])
+  const internalWallLayout = useMemo(() => survey?.internalWalls ?? buildInternalWallLayout(perimeter, room?.walls ?? [], room?.corners ?? [], room?.internalWalls ?? []), [survey, perimeter, room?.walls, room?.corners, room?.internalWalls])
+  const geometry = useMemo(() => fitInternalWallsSketch(perimeter, internalWallLayout.placements), [perimeter, internalWallLayout])
+  const labelLayout = useMemo(() => getSketchLabelLayout(geometry), [geometry])
+  const internalWallLabels = useMemo(() => placeInternalWallLabels(internalWallLayout.placements, geometry.project, labelLayout.boxes), [internalWallLayout, geometry, labelLayout])
+  const openingLayout = useMemo(() => survey?.openings ?? buildOpeningLayout(geometry, room?.walls ?? [], room?.corners ?? [], room?.openings ?? []), [survey, geometry, room?.walls, room?.corners, room?.openings])
+  const openingReservations = useMemo(() => [...labelLayout.boxes, ...internalWallLabels.map(label => label.box)], [labelLayout, internalWallLabels])
+  const selected = selection?.roomId === room?.id ? selection?.wallId : undefined
+  const selectedWall = room?.walls.find(wall => wall.id === selected)
+  return <aside className={`sketch-panel ${expanded ? 'expanded' : ''}`} aria-label="Croqui do ambiente">
+    <div className="sketch-heading"><div><span className="eyebrow">VISUALIZAÇÃO</span><h2>Croqui do ambiente</h2></div><button className="expand" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? 'Recolher' : 'Expandir'}</button></div>
+    <div className="sketch-paper"><svg viewBox="0 0 440 340" role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`}>
+      <defs><pattern id={`${svgId}-grid`} width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#d7ddd4"/></pattern><marker id={`${svgId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#947239"/></marker></defs>
+      <rect width="440" height="340" fill={`url(#${svgId}-grid)`}/>
+      <text x="20" y="24" className="svg-caption">↻ Perímetro em sentido horário · ângulos internos</text>
+      {!geometry.segments.length && <text x="220" y="175" textAnchor="middle" className="svg-empty">{room ? 'Adicione a parede A para começar' : 'Selecione um ambiente'}</text>}
+      {geometry.diagonalSegments.map(segment => {
+        const start = geometry.project(segment.start), end = geometry.project(segment.end)
+        const { x, y } = labelLayout.positions.get(`diagonal:${segment.diagonal.id}`)!
+        return <g key={segment.diagonal.id} className="svg-diagonal" pointerEvents="none"><title>{`Diagonal medida ${segment.label}: ${meters.format(segment.diagonal.lengthM!)} m`}</title><line x1={start.x} y1={start.y} x2={end.x} y2={end.y}/><text x={x} y={y - 6} textAnchor="middle">{segment.label}<tspan x={x} dy="13">{meters.format(segment.diagonal.lengthM!)} m</tspan></text></g>
+      })}
+      {geometry.allMeasured && !geometry.endpointsMeet && geometry.segments.length >= 3 && (() => {
+        const start = geometry.project(geometry.segments[0].start), end = geometry.project(geometry.segments.at(-1)!.end)
+        return <g className="closure-gap" pointerEvents="none"><title>Diferença de fechamento; trecho ilustrativo, sem parede adicionada</title><line x1={start.x} y1={start.y} x2={end.x} y2={end.y}/><circle cx={end.x} cy={end.y} r="3"/></g>
+      })()}
+      {geometry.segments.map((segment, index) => {
+        const start = geometry.project(segment.start), end = geometry.project(segment.end)
+        const { x: dx, y: dy } = segment.direction
+        const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
+        const label = labelLayout.positions.get(`wall:${segment.wall.id}`)!
+        const wallLayout = openingLayout.wallLayouts.find(layout => layout.wallId === segment.wall.id)!
+        const entry = labelLayout.positions.get('entry')!
+        const active = selected === segment.wall.id
+        const select = () => room && setSelection({ roomId: room.id, wallId: segment.wall.id })
+        return <g key={segment.wall.id} className={`svg-wall ${active ? 'is-selected' : ''}`} role="button" tabIndex={0} aria-pressed={active} aria-label={`Parede ${segment.wall.label}, ${segment.measured ? `${meters.format(segment.wall.lengthM!)} metros` : 'sem medida válida'}`} onClick={select} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select() } }}>
+          <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth="22"/>
+          {wallLayout.solidRanges.map((range, rangeIndex) => {
+            const from = geometry.project(range.start), to = geometry.project(range.end)
+            return <line key={rangeIndex} className="wall-stroke" x1={from.x} y1={from.y} x2={to.x} y2={to.y} strokeDasharray={segment.measured ? undefined : '6 5'}/>
+          })}
+          <text className="wall-label" x={label.x} y={label.y - 6} textAnchor="middle"><tspan x={label.x}>{segment.wall.label}</tspan><tspan x={label.x} dy="16" className="wall-length">{segment.wall.lengthM === null ? 'Sem medida' : Number.isFinite(segment.wall.lengthM) ? `${meters.format(segment.wall.lengthM)} m` : 'Medida inválida'}</tspan></text>
+          {index === 0 && <g className="entry-indicator"><line x1={middle.x - dy * 48} y1={middle.y + dx * 48} x2={middle.x - dy * 9} y2={middle.y + dx * 9} stroke="#947239" strokeWidth="2" markerEnd={`url(#${svgId}-arrow)`}/><text x={entry.x} y={entry.y} textAnchor="middle">Entrada principal · {segment.wall.label}</text></g>}
+        </g>
+      })}
+      <InternalWallSketch labels={internalWallLabels} geometry={geometry}/>
+      <OpeningSketch layout={openingLayout} geometry={geometry} extraReservations={openingReservations}/>
+      {geometry.corners.map(corner => {
+        const position = geometry.project(corner.position)
+        const label = labelLayout.positions.get(`angle:${corner.id}`)!; const cornerLabel = labelLayout.positions.get(`corner:${corner.id}`)!
+        const startHeading = Math.atan2(corner.incoming.y, corner.incoming.x) + Math.PI
+        const endHeading = startHeading - corner.visualAngle * Math.PI / 180
+        const arcStart = { x: position.x + Math.cos(startHeading) * 13, y: position.y + Math.sin(startHeading) * 13 }
+        const arcEnd = { x: position.x + Math.cos(endHeading) * 13, y: position.y + Math.sin(endHeading) * 13 }
+        const defined = validAngle(corner.angleDegrees)
+        const source = !defined ? 'não definido' : corner.angleSource === 'assumed' ? 'presumido' : corner.angleSource === 'calculated' ? 'calculado' : 'informado'
+        return <g key={corner.id} className="svg-corner" pointerEvents="none">
+          <title>{`Canto ${corner.label}: ${defined ? `${corner.angleDegrees}°` : 'ainda não definido'} — ${source}${corner.closing && !geometry.endpointsMeet ? ', encontro final ainda separado do início' : ''}`}</title>
+          <circle cx={position.x} cy={position.y} r="4"/>
+          <path className="angle-arc" d={`M${arcStart.x} ${arcStart.y} A13 13 0 ${corner.visualAngle > 180 ? 1 : 0} 0 ${arcEnd.x} ${arcEnd.y}`} strokeDasharray={!defined || (corner.closing && !geometry.endpointsMeet) ? '3 3' : undefined}/>
+          <text x={cornerLabel.x} y={cornerLabel.y} textAnchor="middle">{corner.label}</text>
+          <text x={label.x} y={label.y} textAnchor="middle" className="corner-angle"><tspan x={label.x}>{defined ? `${corner.angleSource === 'calculated' ? '≈ ' : ''}${degrees.format(corner.angleDegrees!)}°` : '?'}</tspan><tspan x={label.x} dy="12" className="angle-source">{source}</tspan></text>
+        </g>
+      })}
+    </svg></div>
+    <div className="sketch-note" role="status"><span className="status-dot"/>{selectedWall ? `Parede ${selectedWall.label} selecionada` : 'Clique em uma parede para selecionar'}</div>
+    <div className="geometry-notes">
+      <p>Entrada principal indicada na primeira parede{room?.walls[0] ? ` (${room.walls[0].label})` : ''}. Aberturas: largura × altura e peitoril em cm. A distância parte do canto identificado até a borda mais próxima.</p>
+      {geometry.segments.length > 0 && !geometry.allMeasured && <p>Trechos sem comprimento positivo usam referência visual tracejada de 1 m. Informe as medidas para definir o perímetro.</p>}
+      {geometry.corners.length > 0 && !geometry.allAnglesDefined && <p>Ângulos não definidos usam 90° apenas no desenho provisório. O valor original permanece sem definição.</p>}
+      <GeometryStatus geometry={geometry}/>
+    </div>
+  </aside>
+}

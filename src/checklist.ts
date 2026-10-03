@@ -1,0 +1,88 @@
+import type { Project, Room } from './models'
+import { getWallReferences } from './openings'
+import { buildRoomGeometry } from './roomGeometry'
+import type { RoomGeometry } from './roomGeometry'
+import { validAngle, getCorners } from './corners'
+import { geometryTolerance } from './tolerances'
+import { relationshipProblems } from './relationships'
+
+export interface ChecklistIssue { id: string; roomId: string; elementId?: string; field?: string; description: string; kind: 'automatic' | 'manual' | 'technical'; note?: string }
+export interface CheckTarget { key: string; elementId: string; field?: string; label: string }
+export function measurementTargets(room: Room): CheckTarget[] {
+  const targets: CheckTarget[] = []
+  const add = (elementId: string, label: string, fields: [string, string][] = []) => {
+    targets.push({ key: elementId, elementId, label })
+    for (const [field, caption] of fields) targets.push({ key: `${elementId}:${field}`, elementId, field, label: `${label} — ${caption}` })
+  }
+  add(room.id, 'Ambiente', [['name', 'nome'], ['ceilingHeightM', 'pé-direito']])
+  room.walls.forEach(wall => add(wall.id, `Parede ${wall.label}`, [['lengthM', 'comprimento']]))
+  getCorners(room.walls, room.corners).forEach((corner, index) => add(corner.id, `Canto ${room.walls[index].label}${room.walls[(index + 1) % room.walls.length].label}`, [['angleDegrees', 'ângulo']]))
+  room.openings.forEach(opening => add(opening.id, opening.label, [['widthM', 'largura'], ['heightM', 'altura'], ...(opening.type === 'window' ? [['sillHeightM', 'peitoril']] as [string, string][] : []), ['offsetM', 'posição'], ['referenceCornerId', 'canto de referência']]))
+  room.diagonals.forEach((diagonal, index) => add(diagonal.id, `Diagonal ${index + 1}`, [['lengthM', 'distância'], ['cornerIds', 'cantos']]))
+  room.internalWalls.forEach(wall => add(wall.id, wall.label, [['lengthM', 'comprimento'], ['origin', 'origem'], ['distanceM', 'posição'], ['orientationDegrees', 'orientação'], ['thicknessM', 'espessura'], ['heightM', 'altura']]))
+  return targets
+}
+const positive = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0
+const nonnegative = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0
+export function roomChecklist(room: Room, project: Project, survey?: RoomGeometry) {
+  const issues: ChecklistIssue[] = []
+  let total = 0, filled = 0
+  const require = (valid: boolean, elementId: string, field: string, description: string) => {
+    total++; if (valid) filled++
+    else issues.push({ id: `auto:${elementId}:${field}`, roomId: room.id, elementId, field, description, kind: 'automatic' })
+  }
+  const warning = (elementId: string, field: string, description: string) => {
+    if (!issues.some(item => item.elementId === elementId && item.description === description)) issues.push({ id: `warning:${elementId}:${field}`, roomId: room.id, elementId, field, description, kind: 'automatic' })
+  }
+  require(!!room.name.trim(), room.id, 'name', 'Nome do ambiente ausente.')
+  require(positive(room.ceilingHeightM), room.id, 'ceilingHeightM', 'Pé-direito não informado ou inválido.')
+  room.walls.forEach(wall => require(positive(wall.lengthM), wall.id, 'lengthM', `Parede ${wall.label} sem comprimento válido.`))
+  const derived = survey ?? buildRoomGeometry(room)
+  const geometry = derived.perimeter
+  const sufficient = room.walls.length >= 3 && geometry.allMeasured && geometry.allAnglesDefined
+  require(sufficient, room.id, 'geometry', 'Geometria insuficiente: confira paredes, comprimentos e ângulos.')
+  if (room.walls.length >= 3 && geometry.allMeasured && geometry.allAnglesDefined && (geometry.closureM > geometryTolerance.closureWarningM || geometry.orientationMismatch > geometryTolerance.angleDifferenceWarningDegrees)) warning(room.id, 'geometry', `Grande divergência de fechamento (${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(geometry.closureM * 100)} cm). Verifique as medidas e os ângulos.`)
+  geometry.corners.forEach(corner => {
+    if (!validAngle(corner.angleDegrees)) warning(corner.id, 'angleDegrees', `Canto ${corner.label}: ângulo ainda não definido ou inválido.`)
+  })
+  room.openings.forEach(opening => {
+    const label = opening.label
+    require(positive(opening.widthM), opening.id, 'widthM', `${label} sem largura válida.`)
+    require(positive(opening.heightM), opening.id, 'heightM', `${label} sem altura válida.`)
+    if (opening.type === 'window') require(nonnegative(opening.sillHeightM), opening.id, 'sillHeightM', `${label} sem peitoril válido.`)
+    require(room.walls.some(wall => wall.id === opening.wallId) && nonnegative(opening.offsetM), opening.id, 'offsetM', `${label}: posição não definida ou inválida.`)
+    require(getWallReferences(room.walls, room.corners, opening.wallId).some(corner => corner.id === opening.referenceCornerId), opening.id, 'referenceCornerId', `${label}: canto de referência ausente ou inexistente.`)
+  })
+  // Existing positional checks also cover overlap and measurements outside their wall.
+  derived.openings.checks.forEach(check => {
+    if (issues.some(item => item.elementId === check.id && item.id.startsWith('auto:'))) return
+    check.messages.forEach((message, index) => warning(check.id, `opening-check-${index}`, `${room.openings.find(item => item.id === check.id)?.label}: ${message}`))
+  })
+  const internalLayout = derived.internalWalls
+  room.internalWalls.forEach(wall => {
+    require(positive(wall.lengthM), wall.id, 'lengthM', `${wall.label} sem comprimento válido.`)
+    const origin = wall.origin
+    const validOrigin = origin.type === 'perimeter_wall' && room.walls.some(item => item.id === origin.wallId)
+    require(validOrigin, wall.id, 'origin', `${wall.label}: origem não definida ou indisponível nesta etapa.`)
+    const validPosition = origin.type === 'perimeter_wall' && nonnegative(origin.distanceM) && getWallReferences(room.walls, room.corners, origin.wallId).some(item => item.id === origin.referenceCornerId)
+    require(validPosition, wall.id, 'distanceM', `${wall.label}: posição insuficiente; confira distância e canto de referência.`)
+    require(nonnegative(wall.orientationDegrees) && wall.orientationDegrees! <= 360, wall.id, 'orientationDegrees', `${wall.label}: orientação não definida ou inválida.`)
+  })
+  internalLayout.checks.forEach(check => {
+    if (issues.some(item => item.elementId === check.id && item.id.startsWith('auto:'))) return
+    check.messages.forEach((message, index) => warning(check.id, `internal-check-${index}`, `${room.internalWalls.find(item => item.id === check.id)?.label}: ${message}`))
+  })
+  const corners = getCorners(room.walls, room.corners)
+  room.diagonals.forEach((diagonal, index) => {
+    require(positive(diagonal.lengthM), diagonal.id, 'lengthM', `Diagonal ${index + 1}: valor ausente ou inválido.`)
+    require(diagonal.cornerIds[0] !== diagonal.cornerIds[1] && diagonal.cornerIds.every(cornerId => corners.some(corner => corner.id === cornerId)), diagonal.id, 'cornerIds', `Diagonal ${index + 1}: referência inexistente ou cantos iguais.`)
+  })
+  geometry.diagonalChecks.forEach(check => {
+    if (issues.some(item => item.elementId === check.id && item.id.startsWith('auto:'))) return
+    // Notes describing the calculation's assumptions are not missing survey measurements.
+    check.messages.filter(message => !message.startsWith('Geometria aproximada.') && !message.startsWith('Para este quadrilátero') && !message.startsWith('Os cantos são vizinhos') && !message.startsWith('Dados insuficientes para calcular novos ângulos')).forEach((message, index) => warning(check.id, `diagonal-check-${index}`, `Diagonal: ${message}`))
+  })
+  room.pendingItems.filter(item => !item.resolved).forEach(item => issues.push({ id: item.id, roomId: room.id, elementId: item.elementId, field: item.field, description: item.description, note: item.note, kind: item.kind ?? 'manual' }))
+  relationshipProblems(project).filter(item => item.roomId === room.id && !room.pendingItems.some(pending => pending.issueKey === item.key)).forEach(item => issues.push({ id: `technical:${item.key}`, roomId: room.id, elementId: item.elementId, description: item.description, kind: 'technical' }))
+  return { issues, completeness: Math.round(100 * filled / total), complete: issues.length === 0 }
+}

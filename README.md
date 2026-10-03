@@ -1,0 +1,130 @@
+# Campo — Levantamento arquitetônico
+
+Estrutura inicial em React, TypeScript e Vite. Interface em português, com projetos, pavimentos, ambientes e subambientes independentes.
+
+## Executar
+
+```sh
+npm install
+npm run dev
+```
+
+## Validar e gerar produção
+
+```sh
+npm run build
+npm test
+npm run preview
+```
+
+## Revisão e estabilização — etapa 11
+
+O [relatório da etapa 11](RELATORIO-ETAPA-11.md) registra problemas corrigidos, matriz dos 31 testes, responsividade, acesso local, recuperação de erros e limitações. `npm test` executa as oito suítes automatizadas. A etapa mantém os recursos existentes e não implementa Planta Geral.
+
+Corrigidos autosave concorrente em falha, seleção de journal antigo no fallback, validação de elementos malformados e indicação de entrada após exclusão de A. A geometria do ambiente selecionado agora é calculada uma vez e compartilhada por formulário, croqui e checklist. As medidas originais continuam independentes do resultado derivado. O build verifica também imports, variáveis e parâmetros não utilizados.
+
+## Uso em campo e celular — etapa 10
+
+Para acessar pela rede local, execute na pasta do projeto:
+
+```sh
+npm run dev -- --host 0.0.0.0
+```
+
+Abra no celular, conectado ao mesmo Wi-Fi, o endereço `Network` mostrado pelo Vite. Na verificação desta etapa, o endereço foi `http://192.168.100.5:5174/` (5173 já estava ocupada). O servidor precisa continuar em execução; IP e porta podem mudar. Os projetos pertencem ao navegador e endereço utilizados: o armazenamento do celular é independente do computador, assim como localhost é independente do IP da rede.
+
+O formulário mantém a sequência nome, pé-direito, paredes, aberturas, paredes internas e checklist. Enter no pé-direito inicia as paredes; Enter no comprimento avança para a próxima parede. “Próxima parede” permanece destacado. No mobile, a árvore é recolhível, os controles têm área de toque mínima de 44 px e os campos usam fonte de 16 px. O mini croqui fica fixo e pode ser expandido/recolhido sem perder a edição. No desktop, permanece ao lado do formulário. Vínculos entre ambientes e paredes compartilhadas ficam em seções opcionais recolhidas.
+
+As anotações do SVG procuram posições próximas sem sobreposição, deslocando somente textos. Medidas e geometria original não são alteradas. Geometria e checklist são memorizados para evitar cálculos repetidos em renders de seleção, expansão e status do autosave.
+
+`generateId` centraliza a criação de IDs: prefere `crypto.randomUUID`, usa `crypto.getRandomValues` quando randomUUID não está disponível em HTTP por IP, e possui uma alternativa com timestamp, contador e entropia de sessão para navegadores sem crypto. IDs existentes permanecem intactos. APIs de retenção do navegador são opcionais; se IndexedDB não existir, há armazenamento equivalente em localStorage. Falhas de renderização mostram uma tela simples de recuperação em vez de página em branco.
+
+Verificação: build e testes das etapas anteriores aprovados; `node tests/field-ux.mjs` verifica alternativas de IDs, posições de textos e armazenamento alternativo. No navegador, conferidos 1920×1080, 1366×768, largura 768, 390 e 360 sem rolagem horizontal e com croqui visível. Acesso por localhost e pelo IP HTTP do computador conferido, incluindo autosave e restauração de IDs e medidas. Acesso em celular físico não foi testado.
+
+Os dados são salvos automaticamente neste navegador, em IndexedDB, e restaurados ao reabrir a aplicação no mesmo endereço. Comprimentos são armazenados em metros. Paredes recebem letras sequenciais (A…Z, AA, AB…) sem limite de quatro paredes. Ambos os botões de parede acrescentam a próxima parede e focam seu comprimento.
+
+O SVG desenha cada parede individualmente, com comprimentos, identificação dos cantos e seleção por clique ou teclado. Cada encontro aceita 90° presumido, ângulo interno informado ou ainda não definido. Os valores e suas origens aparecem próximos ao canto no croqui. Ângulos maiores que 180° permitem cantos reentrantes (270° em um ambiente em L). A entrada principal é indicada na parede A, sem desenho de porta. Somente a escala gráfica é ajustada. Se os comprimentos não fecharem, o perímetro permanece aberto e a diferença é informada. O último encontro também é editável e sua orientação é conferida, sem modificar o desenho para fechar.
+
+Trechos sem comprimento positivo usam referência tracejada de 1 m apenas na visualização. Ângulos não definidos ou fora do intervalo 0° < ângulo < 360° usam 90° provisoriamente no desenho, preservando o valor original e indicando a indefinição, quando não houver cálculo por diagonal disponível. No desktop o croqui permanece ao lado do formulário; no celular há uma miniatura fixa expansível.
+
+## Diagonais — etapa 4
+
+Cadastre uma diagonal selecionando dois cantos e informando a distância medida em metros. As diagonais aparecem tracejadas no SVG, com o valor original medido. É possível editar e remover cada registro. Cantos de um perímetro anterior permanecem no registro caso novas paredes mudem sua identificação; a interface avisa e permite selecionar os cantos atuais.
+
+O cálculo utiliza a lei dos cossenos quando a diagonal e duas paredes formam um triângulo. Em um quadrilátero com os quatro comprimentos disponíveis, a diagonal interna divide o ambiente em dois triângulos e permite estimar os quatro ângulos. Trechos maiores também podem estimar um único ângulo desconhecido quando os demais ângulos e comprimentos do trecho são conhecidos. Dados insuficientes, triângulos impossíveis e soluções ambíguas geram avisos, sem impedir a edição.
+
+A diagonal isolada não distingue todas as possíveis configurações do perímetro. A solução usa o ramo convexo nas estimativas triangulares e considera os dois triângulos em lados opostos de uma diagonal interna no quadrilátero; essas hipóteses aparecem no cadastro. Ângulos reentrantes informados continuam tendo prioridade. Não há solver geral de polígonos nem tentativa de ajustar o levantamento para fechar.
+
+Os ângulos calculados aparecem como `≈ 87,4°` e origem `calculado`, somente na geometria de visualização. `Room` contém os dados originais; `buildPerimeter` retorna separadamente `calculations`, cantos de visualização, verificação das diagonais e diferença de fechamento. A edição dos ângulos continua mostrando seus valores originais. Valores informados nunca são substituídos. Estimativas conflitantes não são promediadas: a primeira permanece na visualização com aviso de divergência. Remover ou alterar uma diagonal recalcula a visualização a partir dos dados originais.
+
+Tolerâncias centralizadas em `src/tolerances.ts`: aviso acima de 5 cm de fechamento ou divergência de diagonal, e acima de 1° de diferença angular. O epsilon numérico serve somente para comparações; não altera os dados. Diferenças menores também são mostradas em centímetros com a mensagem de geometria aproximada. No celular, os avisos de fechamento ficam disponíveis no formulário e no croqui expandido. O trecho tracejado entre extremos indica a diferença de fechamento e não é uma parede.
+
+## Aberturas — etapa 5
+
+Cadastre portas, janelas e vãos nos botões correspondentes. Cada ambiente tem sequências independentes: P01, P02…; J01, J02…; V01, V02…. Os identificadores existentes permanecem estáveis; excluir uma abertura não renumera as demais nem reutiliza seu número entre sessões.
+
+Informe largura, altura, parede, canto de referência e distância do canto até a **borda mais próxima** da abertura. Janelas também possuem peitoril. Todos os campos usam metros; o SVG e o resumo mostram as dimensões em centímetros, por exemplo `P01 / 80 × 210 cm / 32 cm de AB` e `J01 / 120 × 100 cm / P=110 cm`. Os cantos disponíveis são apenas os dois extremos da parede selecionada, identificados como início ou final. Trocar a parede solicita a referência correspondente à nova parede, mantendo as dimensões e distância.
+
+O traço da parede é recortado nos intervalos das aberturas. Janelas têm dois traços finos entre as ombreiras; portas e vãos deixam o intervalo livre. Não são presumidos sentido de abertura ou giro de folha. Anotações próximas, com linhas de chamada, identificam cada abertura, suas dimensões e o canto de origem. A posição considera a direção real da parede, inclusive quando houver ângulos informados ou calculados por diagonal.
+
+Aberturas sem largura, distância, referência ou comprimento de parede válidos permanecem no cadastro com avisos e não são posicionadas por suposição. Altura ou peitoril faltantes aparecem como `?` no croqui, quando a posição já puder ser representada. Aberturas fora dos limites e sobreposições também geram avisos, sem alterar as medidas originais. Mudanças no perímetro que invalidem um canto preservam o registro e pedem a seleção de uma referência atual. A geometria e as verificações das aberturas são derivadas, separadas dos dados originais.
+
+## Persistência local e autosave — etapa 9
+
+O banco IndexedDB `campo-levantamentos` guarda toda a estrutura original de projetos em uma transação atômica, incluindo subambientes, cantos, aberturas, diagonais, PIs, pendências, contadores e relações. A última seleção de projeto/pavimento/ambiente também é restaurada. A leitura ocorre antes de liberar a edição: os dados iniciais não sobrescrevem projetos existentes durante a abertura.
+
+O autosave usa debounce de 600 ms, com gravações sequenciais. O cabeçalho mostra “Salvando...” e só mostra “Salvo” após a transação ser concluída. Falhas exibem mensagem e botão para tentar novamente, mantendo as alterações em memória. Ao ocultar ou fechar a página, uma gravação é solicitada imediatamente. Um registro auxiliar síncrono em localStorage protege a edição mais recente durante a espera do debounce; a reabertura usa o registro mais recente e o confirma no IndexedDB. O auxiliar só é removido quando a própria revisão foi gravada, sem apagar uma edição posterior.
+
+O envelope tem `schemaVersion: 1`, `revision` e `savedAt`. A versão está centralizada em `src/storage.ts`; uma versão incompatível ou estrutura incompleta interrompe a abertura sem apagar ou sobrescrever os dados, deixando a base preparada para migrações futuras. Não existe migração destrutiva ou normalização de medidas. O IndexedDB usa cópia estruturada e o registro auxiliar preserva também valores numéricos não finitos e zero negativo, mantendo os dados inválidos disponíveis para conferência.
+
+Excluir projetos, pavimentos, ambientes e aberturas continua sincronizando suas relações antes de persistir. Paredes agora também podem ser removidas com confirmação: referências a paredes/cantos excluídos são limpas nas aberturas, PIs e diagonais, mas suas medidas permanecem para reassociação. Os vínculos de paredes em outros ambientes são limpos com aviso técnico. A nomenclatura de paredes novas evita duplicar rótulos ainda existentes.
+
+Os dados pertencem ao navegador, perfil e endereço utilizados; `localhost` e `127.0.0.1` são armazenamentos diferentes. A aplicação solicita retenção persistente ao navegador quando disponível. Limpar os dados do site ou usar uma sessão privada afeta a retenção. Para encerrar normalmente, aguarde “Salvo”. Não há backend ou Supabase.
+
+Verificação: `node tests/persistence.mjs`, além dos testes anteriores. No navegador, conferidos atualização da página, atualização imediata durante debounce, fechamento/reabertura da aba, precisão dos valores, IDs, hierarquia, observações, vínculos e renomeação de Cozinha para Cozinha Principal. Não foi necessário reiniciar o computador para esses testes.
+
+Arquivos novos: `src/storage.ts`, `src/autosave.ts`, `src/useLocalWorkspace.ts`, `src/deletions.ts` e `tests/persistence.mjs`. Atualizados: `src/App.tsx`, `src/RoomEditor.tsx`, `src/relationships.ts`, `src/styles.css` e este README.
+
+## Checklist, completude e pendências — etapa 8
+
+O checklist do ambiente recalcula automaticamente nome, pé-direito, comprimentos, suficiência da geometria, fechamento acima das tolerâncias, dimensões e referências de aberturas, peitoril, posição/origem/orientação das PIs e valores/referências de diagonais. Também incorpora avisos de posicionamento, sobreposição e incompatibilidade de medidas. Notas que explicam as hipóteses dos cálculos de diagonais não são consideradas pendências.
+
+A porcentagem é a proporção de campos obrigatórios válidos e da suficiência geométrica, arredondada. Medidas opcionais e conexões entre ambientes não são exigidas. A porcentagem pode chegar a 100% e ainda haver uma medida duvidosa ou uma divergência: o número de pendências permanece visível e o ambiente só aparece como completo quando não há alertas ativos. Cada subambiente tem sua própria avaliação.
+
+Em “Marcar medida ou elemento para conferir”, selecione qualquer elemento ou medida disponível, marque “Conferir no local” ou “Medida duvidosa” e registre uma observação opcional de até 240 caracteres. A marcação aparece junto ao elemento. Em “Gerenciar marcações e avisos técnicos”, é possível marcar como conferida, reabrir ou remover. A mesma marcação ativa para medida e motivo não é duplicada; o registro existente recebe a observação atualizada.
+
+“Pendências do projeto” agrupa pavimentos, ambientes e subambientes, incluindo os completos. Clicar em um alerta abre o ambiente, rola até o elemento e destaca o campo quando identificado; paredes também são selecionadas no SVG. O croqui continua sticky no desktop e como miniatura fixa expansível no celular. Nenhuma pendência bloqueia a edição ou a troca de ambiente.
+
+Referências órfãs, conexões consigo próprio e tipos de elementos incompatíveis geram pendências técnicas. A sincronização limpa os IDs quebrados e guarda o aviso técnico em `Room.pendingItems`, para conferência posterior, sem duplicá-lo a cada edição. Pendências automáticas são derivadas e desaparecem ao corrigir os dados; marcações manuais e avisos técnicos são registros persistidos junto aos ambientes.
+
+Verificação: `node tests/checklist.mjs`, além dos testes das etapas anteriores. Arquivos novos: `src/checklist.ts`, `src/ChecklistPanel.tsx` e `tests/checklist.mjs`. Atualizados: modelos, relações, App, RoomEditor, Sketch, editores de aberturas/PIs/diagonais/cantos, estilos e este README.
+
+## Hierarquia e relações — etapa 7
+
+Cada ambiente registra `floorId` e, quando é subambiente, `parentRoomId`. A árvore permite criar, selecionar, renomear e excluir projetos, pavimentos e ambientes. A exclusão pede confirmação e inclui os descendentes. Subambientes possuem registros e croquis independentes; a hierarquia é exclusivamente organizacional.
+
+Portas e vãos permitem escolher “Leva para” entre os demais ambientes do mesmo projeto, inclusive outros pavimentos, e opcionalmente uma abertura correspondente. Janelas não recebem esses campos. Paredes externas permitem selecionar ambiente e parede compartilhada, sem comparar comprimentos nem alterar medidas. Os seletores mostram o caminho organizacional para distinguir nomes iguais.
+
+`reconcileRelationships` valida referências e sincroniza `opening_connection` e `shared_wall` a cada edição. Os IDs das relações permanecem estáveis durante renomeações e edições. Vínculos são direcionais: não se presume uma conexão inversa. Limpar o destino também limpa a abertura correspondente; excluir somente a abertura de destino preserva o ambiente conectado. Excluir ambientes, descendentes ou pavimentos limpa referências e relações afetadas. Relações consigo próprio e destinos inválidos são descartados. Nenhum vínculo combina ou posiciona croquis.
+
+Verificação: `node tests/relationships.mjs`. Arquivos desta etapa: `src/models.ts`, `src/domain.ts`, `src/App.tsx`, `src/RoomEditor.tsx`, `src/OpeningEditor.tsx`, `src/styles.css` e README; novos `src/relationships.ts`, `src/RoomConnections.tsx` e `tests/relationships.mjs`.
+
+## Paredes internas e relações futuras — etapa 6
+
+Cada ambiente permite cadastrar PI01, PI02… com parede de origem, canto de referência, distância até o início, comprimento, orientação, espessura e altura opcionais e observação. A sequência é independente do perímetro e não reutiliza números removidos. A PI não cria ambientes nem altera paredes externas ou o fechamento.
+
+A orientação é medida no sentido horário em relação ao sentido da parede de origem: 0° acompanha a parede, 90° aponta para dentro de um perímetro horário e 270° aponta para fora. Trocar o canto de referência muda somente a origem da distância. O SVG mostra a PI com identificação e comprimento próximos; o enquadramento considera suas extremidades e ajusta apenas a projeção gráfica. Dados incompletos ou inválidos permanecem registrados com avisos.
+
+Projetos, pavimentos, ambientes, paredes e aberturas usam UUIDs; as novas PIs também. Cantos mantêm IDs derivados do par de IDs das paredes, sem depender dos rótulos visuais. Renomear ambientes ou rótulos não altera referências estruturais. Todos esses identificadores e referências são preservados no armazenamento local.
+
+`Project.relationships` armazena `RoomRelationship` com IDs de origem/destino e os tipos `opening_connection`, `shared_wall`, `adjacency` e `manual_reference`. `Opening` tem os campos opcionais `connectedRoomId` e `connectedOpeningId`; `Wall.sharedWallReference` guarda IDs de ambiente e parede. O modelo de origem de PI prevê parede do perímetro, outra PI ou posição livre, além de referência opcional a uma futura divisão formal. Apenas a origem no perímetro tem interface nesta etapa; as demais relações são preparação de dados.
+
+Verificação de paredes internas e modelos: `node tests/internal-walls.mjs`. Inclui o ambiente 2 × 4 m com PI de 1 m, referências em ambos os extremos, orientações, paredes inclinadas, diagonais, preservação do perímetro e aberturas, enquadramento, IDs estáveis, isolamento entre ambientes e contratos TypeScript.
+
+Arquivos desta etapa: `src/models.ts`, `src/domain.ts`, `src/App.tsx`, `src/RoomEditor.tsx`, `src/Sketch.tsx`, `src/OpeningSketch.tsx`, `src/styles.css` e este README. Novos: `src/internalWalls.ts`, `src/InternalWallEditor.tsx`, `src/InternalWallSketch.tsx`, `src/sketchLabels.ts`, `tests/internal-walls.mjs` e `tests/models.types.ts`.
+
+Verificação da geometria: `node tests/geometry.mjs`. Casos: retangular, pentágono, hexágono, ambiente em L, 45°, 82°, valores indefinidos, cálculo por diagonais, trechos longos, conflitos, triângulos inválidos, dados insuficientes, tolerâncias e preservação dos dados.
+
+Verificação das aberturas: `node tests/openings.mjs`. Casos: referência em ambos os extremos, recorte do traço, paredes inclinadas, portas/janelas/vãos, unidades, dados incompletos, limites, sobreposições, cantos inválidos e preservação dos registros.
+
+Modelos: `src/models.ts`. Organização e nomenclatura: `src/domain.ts`. Identificação e valores dos encontros: `src/corners.ts`. Geometria de visualização: `src/geometry.ts`. Cálculos trigonométricos: `src/diagonals.ts`. Editores: `src/CornerEditor.tsx`, `src/DiagonalEditor.tsx` e `src/OpeningEditor.tsx`. Posicionamento das aberturas: `src/openings.ts`. Renderização das aberturas: `src/OpeningSketch.tsx`. Avisos de fechamento: `src/GeometryStatus.tsx`. Sem backend ou funcionalidades das próximas etapas; armazenamento local implementado na etapa 9.

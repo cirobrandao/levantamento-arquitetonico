@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="UTF-8"><title>Teste isolado de falha do banco</title><div id="root"></div><script type="module">
+  import React from 'react'
+  import { createRoot } from 'react-dom/client'
+  import ErrorBoundary from '/src/ErrorBoundary.tsx'
+  import '/src/styles.css'
+  // Test-only unavailable database. No real database or journal is modified.
+  Object.defineProperty(window, 'indexedDB', { configurable: true, value: {
+    open() { const request = { error: new Error('Armazenamento indisponível — falha simulada') }; queueMicrotask(() => request.onerror?.()); return request }
+  } })
+  const { default: App } = await import('/src/App.tsx')
+  createRoot(document.getElementById('root')).render(React.createElement(ErrorBoundary, null, React.createElement(App)))
+</script></html>
