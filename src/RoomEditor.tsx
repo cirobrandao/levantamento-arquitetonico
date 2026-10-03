@@ -1,7 +1,7 @@
 import RoomObjectEditor from './RoomObjectEditor'
 import { MeasurementInput, useMeasurements } from './Measurement'
 import type { WallType } from './models'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Room } from './models'
 import { id, wallLabel } from './domain'
 import { getCorners } from './corners'
@@ -17,6 +17,9 @@ import type { ChecklistIssue } from './checklist'
 import { ManualMarkers, RoomChecklistPanel } from './ChecklistPanel'
 import { nextWallIndex, removePerimeterWall } from './deletions'
 import type { RoomGeometry } from './roomGeometry'
+import RoomSummary from './RoomSummary'
+import { roomMetrics } from './metrics'
+import { roomChecklist } from './checklist'
 export default function RoomEditor({ room, survey, onChange, relatedRooms, project, onNavigate, focusIssue, selectedObjectId, onSelectObject }: { room: Room; survey: RoomGeometry; onChange: (room: Room) => void; relatedRooms: RoomOption[]; project: Project; onNavigate: (issue: ChecklistIssue) => void; focusIssue?: ChecklistIssue; selectedObjectId?: string; onSelectObject?: (id: string) => void }) {
   const { unit } = useMeasurements()
   const editorRef = useRef<HTMLElement>(null)
@@ -46,9 +49,11 @@ export default function RoomEditor({ room, survey, onChange, relatedRooms, proje
     requestAnimationFrame(() => inputs.current[wall.id]?.focus())
   }
   const wallTypes: Record<WallType, string> = { masonry: 'Alvenaria', drywall: 'Drywall', concrete: 'Concreto', glass: 'Vidro', wood: 'Madeira', partition: 'Divisória', other: 'Outro' }
+  const metrics = useMemo(() => roomMetrics(room, survey), [room, survey])
+  const status = useMemo(() => roomChecklist(room, project, survey), [room, project, survey])
   return <section className="editor" ref={editorRef}>
     
-    <div className="section-top"><div><span className="eyebrow">DADOS DO AMBIENTE</span><h2>Comece pelas medidas</h2></div><span className="pill">Em levantamento</span></div>
+    <div className="section-top"><div><span className="eyebrow">DADOS DO AMBIENTE</span><h2>Comece pelas medidas</h2></div><span className={`pill ${status.complete ? 'pill-complete' : ''}`}>{status.complete ? '✓ Completo' : `Em levantamento · ${status.completeness}%`}</span></div>
     <div className="fields" data-pending-element={room.id} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); const fields = [...event.currentTarget.querySelectorAll<HTMLInputElement>('input')]; const next = fields[fields.indexOf(event.target as HTMLInputElement) + 1]; if (next) next.focus(); else if (room.walls[0]) inputs.current[room.walls[0].id]?.focus(); else addWall() } }}><label>Nome do ambiente<input data-pending-field="name" value={room.name} onChange={e => onChange({ ...room, name: e.target.value })} placeholder="Ex.: Sala de estar"/></label><label>Pé-direito <span>({unit})</span><MeasurementInput data-pending-field="ceilingHeightM" value={room.ceilingHeightM} onValue={value => onChange({ ...room, ceilingHeightM: value })}/></label><ManualMarkers room={room} elementId={room.id}/></div>
     <div className="wall-heading"><div><h3>Paredes do perímetro</h3><p>Cadastre as paredes na ordem do levantamento.</p></div><span className="count">{room.walls.length}</span></div>
     <div className="guidance" data-pending-element="geometry">A primeira parede ({room.walls[0]?.label ?? 'A'}) corresponde, por padrão, à parede da entrada principal. Cadastre as paredes no sentido horário.</div>
@@ -60,6 +65,7 @@ export default function RoomEditor({ room, survey, onChange, relatedRooms, proje
     {room.walls.length > 0 && <SharedWalls room={room} rooms={relatedRooms} onChange={onChange}/>}
     <InternalWallEditor room={room} onChange={onChange} checks={internalWallLayout.checks}/>
     <RoomObjectEditor room={room} onChange={onChange} selectedId={selectedObjectId} onSelect={onSelectObject}/>
+    <RoomSummary metrics={metrics}/>
     <RoomChecklistPanel room={room} survey={survey} project={project} onChange={onChange} onNavigate={onNavigate}/><div className="mobile-geometry-status"><GeometryStatus geometry={geometry}/></div>
     <p className="sr-only" role="status">{message}</p>
     <p className="memory-note">Salvamento automático neste navegador e dispositivo. Aguarde a indicação “Salvo” antes de encerrar.</p>
