@@ -27,6 +27,15 @@ npm test
 npm run preview
 ```
 
+## Quantitativos, relatório e exportações (complemento)
+
+- **Quantitativos por ambiente** (`src/metrics.ts`, quadro abaixo do formulário): área do piso (≈ quando usa ângulo calculado ou fechamento aproximado), perímetro na unidade do projeto, área bruta e líquida de paredes, área de aberturas e volume. Nada é gravado de volta nas medidas; dados ausentes são listados.
+- **Selo de completude** no cabeçalho do ambiente ("Em levantamento · 72%" / "✓ Completo"), usando o mesmo checklist da etapa 8.
+- **Relatório imprimível/PDF** do projeto (índice com áreas, croqui e tabelas por ambiente, pendências), com comprimentos na unidade do projeto e IDs visuais.
+- **Planilha CSV** (separador `;`, decimais com vírgula, valores canônicos em metros) e **backup/importação JSON** de um ou todos os projetos; a importação migra schemas antigos e nunca sobrescreve sem confirmação.
+
+Suítes: `tests/metrics.mjs` e `tests/exporting.mjs`.
+
 ## Testes obrigatórios com Vitest e uso offline (PWA) — complemento das etapas 9 a 11
 
 `npm test` executa as suítes `tests/*.mjs` e, em seguida, os **21 testes obrigatórios da etapa 11** com Vitest (`tests/etapa11/`; `npm run test:etapa11` roda só eles). A persistência é testada com IndexedDB simulado (`fake-indexeddb`); o uso no celular tem verificação estrutural automática e roteiro manual em [tests/etapa11/README.md](tests/etapa11/README.md).
