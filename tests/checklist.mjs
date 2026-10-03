@@ -31,8 +31,13 @@ const missing = { ...room, walls: room.walls.map((wall, i) => i === 2 ? { ...wal
 assert.ok(check(missing).issues.some(item => item.elementId === room.walls[2].id && item.field === 'lengthM'))
 assert.ok(check(missing).issues.some(item => item.field === 'geometry'))
 assert.equal(check({ ...room, walls: room.walls.map((wall, i) => i === 2 ? { ...wall, lengthM: 3.8 } : wall) }).issues.some(item => item.description.startsWith('Grande divergência')), true)
-const opening = { id: id(), type: 'door', label: 'P01', wallId: room.walls[0].id, referenceCornerId: getWallReferences(room.walls, room.corners, room.walls[0].id)[0].id, widthM: .8, heightM: 2.1, sillHeightM: null, offsetM: 0 }
+const opening = { id: id(), type: 'door', label: 'P01', wallId: room.walls[0].id, referenceCornerId: getWallReferences(room.walls, room.corners, room.walls[0].id)[0].id, widthM: .8, heightM: 2.1, sillHeightM: null, offsetM: 0, doorKind: 'hinged', swing: 'inward', hinge: 'right' }
 assert.equal(check({ ...room, openings: [opening] }).complete, true)
+// Porta sem sentido de abertura: pendência própria (aviso, não bloqueia nem altera a completude das medidas).
+const unknownSwing = check({ ...room, openings: [{ ...opening, swing: undefined, hinge: undefined }] })
+assert.ok(unknownSwing.issues.some(item => item.elementId === opening.id && item.field === 'doorKind' && item.description === 'P01: sentido de abertura não informado.'))
+assert.equal(unknownSwing.completeness, 100)
+assert.equal(check({ ...room, openings: [{ ...opening, doorKind: 'sliding', slideDirection: 'left' }] }).complete, true)
 const incompleteDoor = { ...opening, widthM: null, heightM: 0, offsetM: null, referenceCornerId: '' }
 assert.deepEqual(check({ ...room, openings: [incompleteDoor] }).issues.map(item => item.field), ['widthM', 'heightM', 'offsetM', 'referenceCornerId'])
 const window = { ...opening, type: 'window', label: 'J01' }

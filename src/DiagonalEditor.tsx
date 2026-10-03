@@ -23,7 +23,7 @@ export default function DiagonalEditor({ room, onChange, checks }: { room: Room;
         <ManualMarkers room={room} elementId={diagonal.id}/><div className="diagonal-fields">{([0, 1] as const).map(endpoint => <label key={endpoint}>Canto {endpoint === 0 ? 'inicial' : 'final'}<select value={diagonal.cornerIds[endpoint]} onChange={event => { const cornerIds: [string, string] = [...diagonal.cornerIds]; cornerIds[endpoint] = event.target.value; update({ cornerIds }) }}>
           {!corners.some(corner => corner.id === diagonal.cornerIds[endpoint]) && <option value={diagonal.cornerIds[endpoint]}>Canto fora do perímetro</option>}
           {corners.map(corner => <option key={corner.id} value={corner.id}>{label(corner.id)}</option>)}
-        </select></label>)}<label>Distância medida ({unit})<MeasurementInput value={diagonal.lengthM} onValue={value => update({ lengthM: value })}/></label></div>
+        </select></label>)}<label>Distância medida ({unit})<MeasurementInput id={`${diagonal.id}-lengthM`} value={diagonal.lengthM} onValue={value => update({ lengthM: value })}/></label></div>
         <div className="diagonal-feedback" aria-live="polite">{check?.messages.map(message => <p key={message}>{message}</p>)}{check?.differenceM !== null && check?.differenceM !== undefined && <p>Diferença entre diagonal medida e croqui: {format(check.differenceM)}.</p>}</div>
       </div>
     })}

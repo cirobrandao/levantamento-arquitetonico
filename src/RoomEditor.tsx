@@ -45,8 +45,9 @@ export default function RoomEditor({ room, survey, onChange, relatedRooms, proje
   function addWall() {
     const wall = { id: id(), label: wallLabel(nextWallIndex(room)), lengthM: null }
     const walls = [...room.walls, wall]
+    // Cantos novos nascem no modo Automático (calculado pela geometria; nunca gravado como medida).
     const activeCorners = getCorners(walls, room.corners)
-    onChange({ ...room, walls, corners: [...room.corners, ...activeCorners.filter(corner => !room.corners.some(saved => saved.id === corner.id))] })
+    onChange({ ...room, walls, corners: [...room.corners, ...activeCorners.filter(corner => !room.corners.some(saved => saved.id === corner.id)).map(corner => ({ ...corner, angleSource: 'calculated' as const, angleDegrees: null }))] })
     setMessage(`Parede ${wall.label} adicionada.`)
     requestAnimationFrame(() => inputs.current[wall.id]?.focus())
   }

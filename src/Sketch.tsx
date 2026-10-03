@@ -4,6 +4,7 @@ import { useMeasurements } from './Measurement'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { LabelOffsets, Room } from './models'
 import { DragProvider, Movable, useLabelDrag } from './sketchDrag'
+import { useSketchZoom } from './sketchZoom'
 import { buildPerimeter } from './geometry'
 import { validAngle } from './corners'
 import GeometryStatus from './GeometryStatus'
@@ -15,12 +16,15 @@ import { getSketchLabelLayout } from './sketchLabels'
 import type { RoomGeometry } from './roomGeometry'
 
 const degrees = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
-export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject, variant = 'panel', onLabelOffsetsChange }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void; variant?: 'panel' | 'report'; onLabelOffsetsChange?: (offsets: LabelOffsets) => void }) {
+// No celular, o croqui recolhido é uma miniatura fixa: zoom só com o croqui expandido.
+const compactLayout = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 800px)').matches
+export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject, variant = 'panel', onLabelOffsetsChange, onFocusField }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void; variant?: 'panel' | 'report'; onLabelOffsetsChange?: (offsets: LabelOffsets) => void; onFocusField?: (elementId: string, field: string) => void }) {
   const { unit, format } = useMeasurements()
   const [expanded, setExpanded] = useState(false)
   const [arrange, setArrange] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useLabelDrag({ offsets: room?.labelOffsets, onChange: onLabelOffsetsChange, enabled: variant !== 'report' && !!room && !!onLabelOffsetsChange, arrange, svgRef })
+  const zoom = useSketchZoom(svgRef, { panEnabled: !arrange })
   const [selection, setSelection] = useState<{ roomId: string; wallId: string }>()
   useEffect(() => {
     if (room && focusElementId && room.walls.some(wall => wall.id === focusElementId)) setSelection({ roomId: room.id, wallId: focusElementId })
@@ -40,7 +44,7 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
   const selectedWall = room?.walls.find(wall => wall.id === selected)
   return <aside className={variant === 'report' ? 'sketch-panel sketch-report' : `sketch-panel ${expanded ? 'expanded' : ''}`} aria-label="Croqui do ambiente">
     <div className="sketch-heading"><div><span className="eyebrow">VISUALIZAÇÃO</span><h2>Croqui do ambiente</h2></div><button className="expand" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? 'Recolher' : 'Expandir'}</button></div>
-    <div className={`sketch-paper ${arrange ? 'is-arranging' : ''}`}><DragProvider api={drag.api}><svg ref={svgRef} viewBox="0 0 440 340" role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`} {...drag.svgHandlers}>
+    <div className={`sketch-paper ${arrange ? 'is-arranging' : ''} ${zoom.zoomed ? 'is-zoomed' : ''}`} {...(variant === 'report' || (!expanded && compactLayout()) ? {} : zoom.handlers)}>{variant !== 'report' && <div className="zoom-tools" role="group" aria-label="Zoom do croqui"><button onClick={zoom.zoomIn} aria-label="Aproximar">＋</button><button onClick={zoom.zoomOut} disabled={!zoom.zoomed} aria-label="Afastar">－</button>{zoom.zoomed && <button onClick={zoom.reset} aria-label="Ver croqui inteiro">⤢ {Math.round(zoom.zoom * 100)}%</button>}</div>}<DragProvider api={drag.api}><svg ref={svgRef} viewBox={variant === 'report' ? '0 0 440 340' : zoom.viewBox} role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`} {...drag.svgHandlers}>
       <defs><pattern id={`${svgId}-grid`} width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#d7ddd4"/></pattern><marker id={`${svgId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#947239"/></marker></defs>
       <rect width="440" height="340" fill={`url(#${svgId}-grid)`}/>
       <text x="20" y="24" className="svg-caption">↻ Perímetro em sentido horário · ângulos internos</text>
@@ -69,7 +73,7 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
         const wallLayout = openingLayout.wallLayouts.find(layout => layout.wallId === segment.wall.id)!
         const entry = labelLayout.positions.get('entry')!
         const active = selected === segment.wall.id
-        const select = () => { if (room) { setSelection({ roomId: room.id, wallId: segment.wall.id }); onSelectObject?.('') } }
+        const select = () => { if (room) { setSelection({ roomId: room.id, wallId: segment.wall.id }); onSelectObject?.(''); if (onFocusField) { setExpanded(false); onFocusField(segment.wall.id, 'lengthM') } } }
         return <g key={segment.wall.id} className={`svg-wall ${active ? 'is-selected' : ''}`} role="button" tabIndex={0} aria-pressed={active} aria-label={`Parede ${segment.wall.label}, ${segment.measured ? `${format(segment.wall.lengthM!)}` : 'sem medida válida'}`} onClick={select} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select() } }}>
           <title>{`Parede ${segment.wall.label}${segment.wall.thickness != null ? ` · Espessura: ${format(segment.wall.thickness)}` : ''}`}</title><line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth="22"/>
           {wallLayout.solidRanges.map((range, rangeIndex) => {
@@ -81,7 +85,7 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
         </g>
       })}
       <InternalWallSketch labels={internalWallLabels} geometry={geometry}/>
-      <OpeningSketch layout={openingLayout} geometry={geometry} extraReservations={openingReservations}/>
+      <OpeningSketch layout={openingLayout} geometry={geometry} extraReservations={openingReservations} onSelect={onFocusField && variant !== 'report' ? openingId => { setSelection(undefined); setExpanded(false); onFocusField(openingId, 'widthM') } : undefined}/>
       {geometry.corners.map(corner => {
         const position = geometry.project(corner.position)
         const label = labelLayout.positions.get(`angle:${corner.id}`)!; const cornerLabel = labelLayout.positions.get(`corner:${corner.id}`)!
@@ -104,9 +108,9 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
       <button className={`label-arrange ${arrange ? 'is-on' : ''}`} aria-pressed={arrange} onClick={() => { setArrange(value => !value); drag.setActive(undefined) }}>✥ {arrange ? 'Concluir ajuste' : 'Ajustar rótulos'}</button>
       {drag.active && drag.offsets[drag.active] && <button onClick={() => { drag.reset(drag.active); drag.setActive(undefined) }}>↺ Restaurar {labelName(drag.active, room!, geometry)}</button>}
       {Object.keys(drag.offsets).length > 0 && <button onClick={() => { if (window.confirm('Voltar todos os rótulos deste croqui para a posição automática?')) { drag.reset(); drag.setActive(undefined) } }}>↺ Restaurar todos ({Object.keys(drag.offsets).length})</button>}
-      <span className="label-hint">{arrange ? 'Arraste os rótulos com o dedo ou o mouse. Setas do teclado também movem; Delete restaura.' : 'Com o mouse, arraste qualquer rótulo. No celular, toque em “Ajustar rótulos”.'}</span>
+      <span className="label-hint">{arrange ? 'Arraste os rótulos com o dedo ou o mouse. Setas do teclado também movem; Delete restaura.' : 'Com o mouse, arraste qualquer rótulo. No celular, toque em “Ajustar rótulos”. Pinça com dois dedos aproxima; com zoom, um dedo arrasta o desenho.'}</span>
     </div>}
-    <div className="sketch-note" role="status"><span className="status-dot"/>{selectedObject ? `${selectedObject.displayId} — ${selectedObject.name} selecionado` : selectedWall ? `Parede ${selectedWall.label} selecionada` : 'Clique em uma parede ou objeto para selecionar'}</div>
+    <div className="sketch-note" role="status"><span className="status-dot"/>{selectedObject ? `${selectedObject.displayId} — ${selectedObject.name} selecionado` : selectedWall ? `Parede ${selectedWall.label} selecionada` : onFocusField ? 'Toque em uma parede ou abertura para ir ao campo dela' : 'Clique em uma parede ou objeto para selecionar'}</div>
     <div className="geometry-notes">
       <p>Entrada principal indicada na primeira parede{room?.walls[0] ? ` (${room.walls[0].label})` : ''}. Aberturas: largura × altura e peitoril em {unit}. A distância parte do canto identificado até a borda mais próxima.</p>
       {geometry.segments.length > 0 && !geometry.allMeasured && <p>Trechos sem comprimento positivo usam referência visual tracejada de {format(1)}. Informe as medidas para definir o perímetro.</p>}

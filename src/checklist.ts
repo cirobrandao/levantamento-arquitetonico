@@ -23,6 +23,10 @@ export function measurementTargets(room: Room): CheckTarget[] {
   room.internalWalls.forEach(wall => add(wall.id, wall.label, [['lengthM', 'comprimento'], ['origin', 'origem'], ['distanceM', 'posição'], ['orientationDegrees', 'orientação'], ['thicknessM', 'espessura'], ['heightM', 'altura']]))
   return targets
 }
+// Porta de abrir: para onde abre e lado da dobradiça; de correr: para onde corre. Sem isso o croqui mostra o símbolo tracejado.
+export function doorOperationKnown(opening: Pick<import('./models').Opening, 'doorKind' | 'swing' | 'hinge' | 'slideDirection'>) {
+  return (opening.doorKind ?? 'hinged') === 'hinged' ? !!opening.swing && !!opening.hinge : !!opening.slideDirection
+}
 const positive = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0
 const nonnegative = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0
 export function roomChecklist(room: Room, project: Project, survey?: RoomGeometry) {
@@ -52,6 +56,7 @@ export function roomChecklist(room: Room, project: Project, survey?: RoomGeometr
     require(positive(opening.widthM), opening.id, 'widthM', `${label} sem largura válida.`)
     require(positive(opening.heightM), opening.id, 'heightM', `${label} sem altura válida.`)
     if (opening.type === 'window') require(nonnegative(opening.sillHeightM), opening.id, 'sillHeightM', `${label} sem peitoril válido.`)
+    if (opening.type === 'door' && !doorOperationKnown(opening)) warning(opening.id, 'doorKind', `${label}: sentido de abertura não informado.`)
     require(room.walls.some(wall => wall.id === opening.wallId) && nonnegative(opening.offsetM), opening.id, 'offsetM', `${label}: posição não definida ou inválida.`)
     require(getWallReferences(room.walls, room.corners, opening.wallId).some(corner => corner.id === opening.referenceCornerId), opening.id, 'referenceCornerId', `${label}: canto de referência ausente ou inexistente.`)
   })
