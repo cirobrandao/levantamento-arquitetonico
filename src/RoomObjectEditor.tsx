@@ -22,7 +22,7 @@ export default function RoomObjectEditor({ room, onChange, selectedId, onSelect 
       const update = (changes: Partial<RoomObject>) => onChange({ ...room, objects: (room.objects ?? []).map(item => item.id === object.id ? { ...item, ...changes } : item) })
       const dimension = (key: keyof RoomObjectDimensions, label: string) => <label>{label} ({unit})<MeasurementInput value={object.dimensions[key]} onValue={value => update({ dimensions: { ...object.dimensions, [key]: value } })}/></label>
       return <section key={object.id} data-object-card={object.id} className={`room-object-card ${selectedId === object.id ? 'object-selected' : ''}`} aria-label={`${object.displayId} ${object.name}`}>
-        <div className="opening-heading"><h4>{object.displayId}</h4><button onClick={() => setDeletingId(object.id)}>Excluir objeto</button></div>
+        <div className="opening-heading"><h4>{object.displayId}</h4><button onClick={() => setDeletingId(object.id)} aria-label={`Remover ${object.displayId}`}>Remover</button></div>
         {deletingId === object.id && <div className="object-delete-confirmation" role="alertdialog" aria-labelledby={`delete-object-${object.id}`} onKeyDown={event => { if (event.key === 'Escape') setDeletingId(undefined) }}><p id={`delete-object-${object.id}`}>Excluir {object.displayId} — {object.name || 'Sem nome'}?</p><button data-cancel-object-delete onClick={() => setDeletingId(undefined)}>Cancelar</button><button onClick={() => { onChange(removeRoomObject(room, object.id)); setDeletingId(undefined) }}>Confirmar exclusão</button></div>}
         <ElementPhotos room={room} type="room_object" entityId={object.id}/>
         <div className="object-fields">
