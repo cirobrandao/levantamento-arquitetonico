@@ -93,8 +93,9 @@ export function projectCsv(project: Project): { fileName: string; text: string }
 }
 
 // ---------- Download no navegador ----------
-export function downloadText(fileName: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }))
+export function downloadText(fileName: string, text: string, type: string) { downloadBlob(fileName, new Blob([text], { type })) }
+export function downloadBlob(fileName: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url; link.download = fileName; link.rel = 'noopener'
   document.body.append(link); link.click(); link.remove()

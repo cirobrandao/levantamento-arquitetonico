@@ -5,6 +5,12 @@ export const unitNames: Record<MeasurementUnit, string> = { mm: 'Milímetros', c
 export const isMeasurementUnit = (value: unknown): value is MeasurementUnit => value === 'mm' || value === 'cm' || value === 'm'
 export function toDisplay(valueM: number, unit: MeasurementUnit): number { return valueM * factors[unit] }
 export function toCanonical(value: number, unit: MeasurementUnit): number { return value / factors[unit] }
+// Conversão entre unidades (mm ↔ cm ↔ m). 15 algarismos significativos removem o ruído binário
+// (1,23 m → 1230 mm, e não 1230,0000000000002) sem alterar nenhuma medida real.
+export function convertMeasurement(value: number, from: MeasurementUnit, to: MeasurementUnit): number {
+  if (from === to || !Number.isFinite(value)) return value
+  return Number((value * factors[to] / factors[from]).toPrecision(15))
+}
 export function parseMeasurement(text: string, unit: MeasurementUnit): number | null {
   const value = text.trim().replace(',', '.')
   if (!value) return null

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { Project } from './models'
 import type { WorkspaceData } from './storage'
 import ServerHistory from './ServerHistory'
+import ProjectArchivePanel from './ProjectArchivePanel'
 import { createBackup, downloadText, importProjects, parseBackup, projectCsv } from './exporting'
 
 // Exportações (relatório, planilha, backup) e importação de backup.
@@ -28,7 +29,8 @@ export default function ExportPanel({ workspace, project, onImport, onReport }: 
       <button onClick={() => run(() => { const file = createBackup(workspace); downloadText(file.fileName, file.text, 'application/json'); setMessage({ type: 'ok', text: `Backup ${file.fileName} gerado.` }) })}>Backup de todos os projetos</button>
       <label className="import-button">Importar backup…<input ref={input} type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file) }}/></label>
     </div>
-    <p className="muted">O backup guarda todas as medidas originais e pode ser importado em outro navegador ou aparelho.</p>
+    <ProjectArchivePanel workspace={workspace} project={project} onImport={onImport}/>
+    <p className="muted">O arquivo .levantamento leva o projeto inteiro com as fotos; o backup JSON guarda as medidas (sem as imagens). Ambos podem ser importados em outro navegador ou aparelho.</p>
     <ServerHistory/>
     {message && <p className={message.type === 'error' ? 'export-error' : 'export-ok'} role={message.type === 'error' ? 'alert' : 'status'}>{message.text}</p>}
   </details>
