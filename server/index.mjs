@@ -13,6 +13,7 @@ import {
 } from './auth.mjs'
 import { errorPage, esc, loginPage, passwordPage, usersPage } from './views.mjs'
 import { workspaceRouter } from './workspace.mjs'
+import { photosRouter } from './photos.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const dist = path.join(root, 'dist')
@@ -121,6 +122,7 @@ app.use((req, res, next) => {
 
 app.get('/api/me', (req, res) => res.json({ id: req.user.id, username: req.user.username, name: req.user.name, role: req.user.role, csrf: req.session.csrf }))
 app.use('/api/workspace', workspaceRouter())
+app.use('/api/photos', photosRouter())
 
 // ---------- Administração de usuários (somente admin) ----------
 const admin = express.Router()
@@ -192,7 +194,7 @@ const sendIndex = (req, res) => {
   if (!indexHtml) loadIndex()
   if (!indexHtml) return res.status(503).send(errorPage({ status: 503, message: 'A aplicação ainda não foi compilada.', user: req.user, csrf: req.session.csrf }))
   // Ativa no cliente o armazenamento local por usuário e a sincronização (src/sync.ts).
-  const meta = `<meta name="campo-user" content="${esc(req.user.id)}"><meta name="campo-sync" content="api/workspace"><meta name="campo-csrf" content="${esc(req.session.csrf)}">`
+  const meta = `<meta name="campo-user" content="${esc(req.user.id)}"><meta name="campo-sync" content="api/workspace"><meta name="campo-photos" content="api/photos"><meta name="campo-csrf" content="${esc(req.session.csrf)}">`
   res.type('html').send(indexHtml.replace('<head>', `<head>${meta}`))
 }
 app.get(['/', '/index.html'], sendIndex)

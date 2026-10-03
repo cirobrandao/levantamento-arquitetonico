@@ -60,5 +60,16 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS workspace_versions_user_idx ON workspace_versions(user_id, archived_at DESC);
     -- Carimbos por projeto ({ id: { updatedAt, deleted? } }) para a união por projeto entre aparelhos.
     ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS project_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+    -- Índice das fotos sincronizadas (os arquivos ficam em PHOTO_STORAGE_DIR/<usuário>/<fileId>).
+    CREATE TABLE IF NOT EXISTS photo_files (
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_id       TEXT NOT NULL,
+      mime          TEXT NOT NULL,
+      size          BIGINT NOT NULL,
+      has_thumbnail BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, file_id)
+    );
   `)
 }

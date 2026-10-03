@@ -9,12 +9,15 @@ import { createThumbnail, discardUnlinkedPhotoFile, readPhotoFile, savePhotoFile
 
 function usePhotoUrl(fileId: string, thumbnail: boolean) {
   const [url, setUrl] = useState(''), [error, setError] = useState('')
+  // Recarrega quando o arquivo chega de outro aparelho (sincronização de fotos).
+  const [arrived, setArrived] = useState(0)
+  useEffect(() => { const listener = (event: Event) => { if ((event as CustomEvent<string>).detail === fileId) setArrived(value => value + 1) }; window.addEventListener('campo-photo-available', listener); return () => window.removeEventListener('campo-photo-available', listener) }, [fileId])
   useEffect(() => {
     let disposed = false, objectUrl = ''
     setUrl(''); setError('')
     void readPhotoFile(fileId,thumbnail).then(blob => { if (!disposed) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl) } }).catch(error => { if (!disposed) setError(error instanceof Error ? error.message : 'Não foi possível abrir a imagem.') })
     return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
-  }, [fileId,thumbnail])
+  }, [fileId,thumbnail,arrived])
   return { url, error }
 }
 function Thumbnail({ photo }: { photo: Photo }) {

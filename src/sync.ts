@@ -1,28 +1,31 @@
 import type { Project } from './models'
 import type { StoredWorkspace, WorkspaceData } from './storage'
 import { createSnapshot, decodeSnapshot, encodeSnapshot, restoreNavigation } from './storage'
+import { cloneWithNewIds } from './projectClone'
+import { generateId } from './domain'
 
 // Sincronização opcional em segundo plano (ver server/README.md). Sem a configuração
 // <meta name="campo-sync">, nada aqui é usado e a aplicação continua 100% local.
 // O IndexedDB continua sendo a fonte de verdade no aparelho; o servidor é uma cópia.
-export interface SyncConfig { endpoint: string; csrf: string; user: string }
+export interface SyncConfig { endpoint: string; csrf: string; user: string; photos?: string }
 export function readSyncConfig(doc: Document | undefined = globalThis.document): SyncConfig | null {
   const meta = (name: string) => doc?.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ?? ''
   const endpoint = meta('campo-sync'), user = meta('campo-user')
-  return endpoint && user ? { endpoint, csrf: meta('campo-csrf'), user } : null
+  return endpoint && user ? { endpoint, csrf: meta('campo-csrf'), user, photos: meta('campo-photos') || undefined } : null
 }
 
 export type SyncStatus = 'off' | 'synced' | 'syncing' | 'offline' | 'auth' | 'error'
-export const syncStatusShort: Record<SyncStatus, string> = { off: '', synced: 'Sincronizado', syncing: 'Pendente', offline: 'Pendente', auth: 'Pendente', error: 'Pendente' }
+// Três estados visíveis: Salvo localmente (pendente de envio) / Sincronizando... / Sincronizado.
+export const syncStatusShort: Record<SyncStatus, string> = { off: '', synced: 'Sincronizado', syncing: 'Sincronizando...', offline: 'Salvo localmente', auth: 'Salvo localmente', error: 'Salvo localmente' }
 export function syncStatusLong(status: SyncStatus, pending: number): string {
   const what = pending === 1 ? '1 projeto aguardando envio' : pending > 1 ? `${pending} projetos aguardando envio` : 'alterações aguardando envio'
   switch (status) {
     case 'off': return ''
     case 'synced': return 'Sincronizado com o servidor'
-    case 'syncing': return `Pendente: ${what} (enviando…)`
-    case 'offline': return `Pendente: ${what}. Sem conexão; será enviado ao reconectar`
-    case 'auth': return `Pendente: ${what}. Sessão expirada; entre novamente para enviar`
-    case 'error': return `Pendente: ${what}. Falha no envio; nova tentativa automática`
+    case 'syncing': return `Sincronizando... ${what}`
+    case 'offline': return `Salvo localmente: ${what}. Sem conexão; será enviado ao reconectar`
+    case 'auth': return `Salvo localmente: ${what}. Sessão expirada; entre novamente para enviar`
+    case 'error': return `Salvo localmente: ${what}. Falha no envio; nova tentativa automática`
   }
 }
 
@@ -43,32 +46,63 @@ export function hashProject(project: Project): string {
 const later = (a: ProjectStamp | undefined, b: ProjectStamp | undefined) => (a?.updatedAt ?? '') > (b?.updatedAt ?? '')
 const sameStamp = (a: ProjectStamp | undefined, b: ProjectStamp | undefined) => (a?.updatedAt ?? '') === (b?.updatedAt ?? '') && !!a?.deleted === !!b?.deleted
 
-export interface MergeResult { data: WorkspaceData; meta: ProjectMeta; localChanged: boolean; remoteChanged: boolean }
-// Resolução simples de conflito: para cada projeto vale a versão com o updatedAt mais recente
-// (inclusive exclusões). Projetos diferentes editados em aparelhos diferentes são todos mantidos.
-export function mergeByProject(local: { data: WorkspaceData; meta: ProjectMeta }, remote: { data: WorkspaceData; meta: ProjectMeta }): MergeResult {
+// Aviso de conflito mostrado ao usuário (nada é sobrescrito em silêncio).
+// kind 'both': o mesmo projeto mudou nos dois aparelhos; as duas versões ficaram (a do outro aparelho
+// no projeto original e a deste aparelho numa cópia). kind 'revived': excluído num aparelho e
+// alterado no outro; o projeto alterado foi mantido.
+export interface SyncConflict { id: string; kind: 'both' | 'revived'; projectId: string; copyId?: string; name: string; at: string }
+export interface MergeResult { data: WorkspaceData; meta: ProjectMeta; localChanged: boolean; remoteChanged: boolean; conflicts: SyncConflict[] }
+export interface MergeOptions { base?: ProjectMeta; now?: string; newId?: () => string }
+const shortTime = (iso: string) => { const date = new Date(iso); return Number.isNaN(date.getTime()) ? iso : `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` }
+// União por projeto. Sem conflito, vale o updatedAt mais recente (inclusive exclusões). Com `base`
+// (o último estado confirmado pelo servidor), detecta quando os DOIS lados mudaram o mesmo projeto:
+// aí mantém ambos e registra o conflito para o usuário escolher.
+export function mergeByProject(local: { data: WorkspaceData; meta: ProjectMeta }, remote: { data: WorkspaceData; meta: ProjectMeta }, options: MergeOptions = {}): MergeResult {
   const localProjects = new Map(local.data.projects.map(project => [project.id, project]))
   const remoteProjects = new Map(remote.data.projects.map(project => [project.id, project]))
   const stamp = (side: typeof local, projects: Map<string, Project>, id: string): ProjectStamp | undefined => side.meta[id] ?? (projects.has(id) ? { updatedAt: EPOCH } : undefined)
   const ids = [...new Set([...localProjects.keys(), ...remoteProjects.keys(), ...Object.keys(local.meta), ...Object.keys(remote.meta)])]
   const meta: ProjectMeta = {}
   const kept = new Map<string, Project>()
+  const copies = new Map<string, Project>() // id original -> cópia local
+  const conflicts: SyncConflict[] = []
+  const now = options.now ?? new Date().toISOString(), newId = options.newId ?? generateId
   for (const id of ids) {
     const ls = stamp(local, localProjects, id), rs = stamp(remote, remoteProjects, id)
+    const lp = localProjects.get(id), rp = remoteProjects.get(id)
+    if (options.base) {
+      const base = options.base[id]
+      const localEdited = !sameStamp(ls, base), remoteEdited = !sameStamp(rs, base)
+      if (localEdited && remoteEdited && lp && rp && !ls?.deleted && !rs?.deleted && hashProject(lp) !== hashProject(rp)) {
+        const copy = cloneWithNewIds(lp, newId, { keepFileIds: true }).project
+        const named = { ...copy, name: `${lp.name} (versão deste aparelho, ${shortTime(now)})` }
+        meta[id] = rs!; kept.set(id, rp)
+        meta[named.id] = { updatedAt: now }; copies.set(id, named)
+        conflicts.push({ id: newId(), kind: 'both', projectId: id, copyId: named.id, name: rp.name, at: now })
+        continue
+      }
+      // Excluído de um lado e alterado do outro (depois da última sincronização): mantém o alterado.
+      const editedSide = ls?.deleted && remoteEdited && rp ? rp : rs?.deleted && localEdited && lp ? lp : undefined
+      if (editedSide && localEdited && remoteEdited) {
+        meta[id] = { updatedAt: now }; kept.set(id, editedSide)
+        conflicts.push({ id: newId(), kind: 'revived', projectId: id, name: editedSide.name, at: now })
+        continue
+      }
+    }
     const remoteWins = later(rs, ls)
     const winner = remoteWins ? rs! : ls ?? rs!
     meta[id] = winner
     if (winner.deleted) continue
-    const project = (remoteWins ? remoteProjects.get(id) : localProjects.get(id)) ?? localProjects.get(id) ?? remoteProjects.get(id)
+    const project = (remoteWins ? rp : lp) ?? lp ?? rp
     if (project) kept.set(id, project)
   }
   const order = [...local.data.projects.map(project => project.id), ...remote.data.projects.map(project => project.id).filter(id => !localProjects.has(id))]
-  let projects = order.filter(id => kept.has(id)).map(id => kept.get(id)!)
+  let projects = order.filter(id => kept.has(id)).flatMap(id => copies.has(id) ? [kept.get(id)!, copies.get(id)!] : [kept.get(id)!])
   if (!projects.length) projects = local.data.projects // nunca deixa o aparelho sem projeto
   const differs = (side: WorkspaceData) => side.projects.length !== projects.length || projects.some((project, index) => side.projects[index] !== project && (side.projects[index]?.id !== project.id || hashProject(side.projects[index]) !== hashProject(project)))
   const metaDiffers = (side: ProjectMeta) => Object.keys(meta).some(id => !sameStamp(side[id], meta[id]))
   const data = keepNavigation({ ...local.data, projects }, local.data)
-  return { data, meta, localChanged: differs(local.data), remoteChanged: differs(remote.data) || metaDiffers(remote.meta) }
+  return { data, meta, localChanged: differs(local.data), remoteChanged: differs(remote.data) || metaDiffers(remote.meta), conflicts }
 }
 
 // Mantém a navegação atual do aparelho ao aplicar dados vindos de outro aparelho.
@@ -79,7 +113,7 @@ export function keepNavigation(incoming: WorkspaceData, current?: WorkspaceData)
 // Registro local (localStorage, por usuário) dos carimbos, do conteúdo já carimbado e do
 // último estado confirmado pelo servidor. É a "fila" offline: tudo cujo carimbo difere do
 // confirmado está pendente e é enviado quando houver conexão, mesmo após fechar o app.
-interface LedgerState { meta: ProjectMeta; hashes: Record<string, string>; synced: ProjectMeta; syncedRevision: string | null }
+interface LedgerState { meta: ProjectMeta; hashes: Record<string, string>; synced: ProjectMeta; syncedRevision: string | null; conflicts?: SyncConflict[] }
 export class ProjectLedger {
   state: LedgerState = { meta: {}, hashes: {}, synced: {}, syncedRevision: null }
   constructor(private storageKey: string, private now: () => string = () => new Date().toISOString()) {
@@ -116,6 +150,10 @@ export class ProjectLedger {
     this.persist()
   }
   markSynced(revision: string, meta: ProjectMeta) { this.state.syncedRevision = revision; this.state.synced = { ...meta }; this.persist() }
+  get synced() { return this.state.synced }
+  get conflicts(): SyncConflict[] { return this.state.conflicts ?? [] }
+  addConflicts(items: SyncConflict[]) { if (items.length) { this.state.conflicts = [...this.conflicts, ...items].slice(-50); this.persist() } }
+  dismissConflict(id: string) { this.state.conflicts = this.conflicts.filter(item => item.id !== id); this.persist() }
   pendingCount(): number { return Object.keys(this.state.meta).filter(id => !sameStamp(this.state.meta[id], this.state.synced[id])).length }
 }
 
@@ -180,6 +218,8 @@ export interface RemoteSyncOptions {
   onStatus: (status: SyncStatus, pending: number, message?: string) => void
   // Aplica na interface (e grava no IndexedDB) o resultado de uma união com o servidor.
   onMerged: (data: WorkspaceData) => Promise<void> | void
+  // Conflitos detectados (os dados já foram unidos mantendo as duas versões).
+  onConflicts?: (conflicts: SyncConflict[]) => void
   delayMs?: number
   pollMs?: number
 }
@@ -194,6 +234,7 @@ export class RemoteSync {
   constructor(private options: RemoteSyncOptions) {}
   private report(status: SyncStatus, message?: string) { this.lastStatus = status; if (!this.disposed) this.options.onStatus(status, this.options.ledger.pendingCount(), message) }
   get pending() { return this.options.ledger.pendingCount() > 0 }
+  private noteConflicts(conflicts: SyncConflict[]) { if (!conflicts.length) return; this.options.ledger.addConflicts(conflicts); this.options.onConflicts?.(this.options.ledger.conflicts) }
   // Chamado após cada gravação local: carimba e agenda o envio.
   noteLocal(data: WorkspaceData) {
     this.options.ledger.observe(data.projects)
@@ -230,7 +271,8 @@ export class RemoteSync {
       const remote = conflictState(error)
       if (remote && attempt < 3) {
         // Outro aparelho gravou antes: une por projeto (vale o updatedAt mais recente).
-        const merged = mergeByProject({ data, meta }, { data: remote.snapshot.data, meta: remote.meta })
+        const merged = mergeByProject({ data, meta }, { data: remote.snapshot.data, meta: remote.meta }, { base: { ...ledger.synced } })
+        this.noteConflicts(merged.conflicts)
         ledger.markSynced(remote.snapshot.revision, remote.meta)
         ledger.adopt(merged.data.projects, merged.meta)
         if (merged.localChanged) await this.options.onMerged(merged.data)
@@ -260,7 +302,8 @@ export class RemoteSync {
       if (head === ledger.syncedRevision) { this.report('synced'); return }
       const remote = await this.options.transport.get()
       if (!remote || this.disposed || this.active || this.pending) return
-      const merged = mergeByProject({ data: this.options.local(), meta: { ...ledger.meta } }, { data: remote.snapshot.data, meta: remote.meta })
+      const merged = mergeByProject({ data: this.options.local(), meta: { ...ledger.meta } }, { data: remote.snapshot.data, meta: remote.meta }, { base: { ...ledger.synced } })
+      this.noteConflicts(merged.conflicts)
       ledger.markSynced(remote.snapshot.revision, remote.meta)
       ledger.adopt(merged.data.projects, merged.meta)
       if (merged.localChanged) await this.options.onMerged(merged.data)

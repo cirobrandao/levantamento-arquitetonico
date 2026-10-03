@@ -47,8 +47,9 @@ Para produção, coloque um proxy HTTPS na frente (nginx, Caddy etc.) repassando
 - **Local-first:** cada aparelho grava primeiro no IndexedDB, como sem servidor; a sincronização roda em segundo plano e nunca bloqueia a edição.
 - **Carimbos por projeto:** quando o conteúdo de um projeto muda no aparelho, ele recebe `updatedAt`; projetos excluídos viram lápides (`deleted: true`) para não reaparecerem por outro aparelho. Os carimbos ficam num registro local por usuário (localStorage) e são enviados com o levantamento (`project_meta`).
 - **Fila offline:** tudo cujo carimbo ainda não foi confirmado pelo servidor está pendente e é enviado quando houver conexão (evento `online`, foco, a cada 30 s ou ao reabrir o app), com novas tentativas automáticas.
-- **Indicador:** o cabeçalho mostra "☁ Sincronizado" ou "☁ Pendente (n)"; o detalhe (sem conexão, sessão expirada, falha) aparece ao passar o mouse e para leitores de tela.
-- **Conflitos:** se outro aparelho gravou antes, o servidor responde 409 com a versão atual e seus carimbos. O cliente une **por projeto**: vale a versão com o `updatedAt` mais recente (inclusive exclusões); projetos diferentes editados em aparelhos diferentes são todos mantidos. A versão substituída vai para o histórico.
+- **Indicador:** o cabeçalho mostra "✓ Salvo localmente" (gravação no aparelho) e "☁ Sincronizando..." / "☁ Sincronizado" / "☁ Salvo localmente (n)" (pendente de envio); o detalhe (sem conexão, sessão expirada, falha) aparece ao passar o mouse e para leitores de tela.
+- **Conflitos (nunca sobrescreve em silêncio):** se outro aparelho gravou antes, o servidor responde 409 com a versão atual e seus carimbos. O cliente une **por projeto** comparando com o último estado confirmado pelo servidor: projetos alterados só de um lado entram normalmente; se o **mesmo projeto** mudou nos dois aparelhos, as duas versões são mantidas — a do outro aparelho no projeto original e a deste aparelho numa cópia "(versão deste aparelho, dd/mm hh:mm)", com IDs novos e as mesmas fotos — e um aviso no topo deixa escolher "Ficar com a deste aparelho", "Ficar com a do outro aparelho" ou "Manter as duas". Projeto excluído num aparelho e alterado no outro é mantido (com aviso). A versão substituída vai para o histórico.
+- **Fotos:** os metadados viajam com o projeto; os arquivos (original + miniatura) vão para `PHOTO_STORAGE_DIR/<id do usuário>/` (padrão `./data/photos`), com índice na tabela `photo_files`. Depois de cada sincronização (e a cada 60 s) o aparelho envia as fotos que o servidor ainda não tem e baixa as que faltam nele. Nada é apagado no servidor automaticamente. Inclua essa pasta no backup do servidor.
 - **Outros aparelhos:** alterações remotas chegam ao focar a página e a cada 30 s (sem envio pendente), com a mesma união; a navegação atual é mantida.
 - **Aparelho novo:** sem dados locais, abre a cópia do servidor em vez de criar um projeto vazio.
 - **Histórico:** "Exportar e importar › Histórico no servidor" lista as versões substituídas (uma a cada 10 minutos, além das de conflitos; as 50 mais recentes). Cada uma pode ser baixada como backup e recuperada com "Importar backup".
@@ -65,6 +66,10 @@ Para produção, coloque um proxy HTTPS na frente (nginx, Caddy etc.) repassando
 | PUT | `/api/workspace` | `{ baseRevision, resolvesConflict?, meta, snapshot }`; 409 com `current` e `meta` se a base estiver desatualizada |
 | GET | `/api/workspace/versions` | histórico |
 | GET | `/api/workspace/versions/:id` | uma versão |
+| GET | `/api/photos` | índice das fotos do usuário `[{ fileId, mimeType, size, thumbnail }]` |
+| PUT | `/api/photos/:fileId` | arquivo original (corpo binário, `Content-Type: image/*`, até 30 MB) |
+| PUT | `/api/photos/:fileId/thumbnail` | miniatura JPEG |
+| GET | `/api/photos/:fileId` | arquivo original; `?thumbnail=1` para a miniatura |
 
 Escritas exigem o cabeçalho `X-CSRF-Token`. O valor vem na meta `campo-csrf` da página.
 

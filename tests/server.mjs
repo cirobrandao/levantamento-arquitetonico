@@ -8,9 +8,10 @@ const url = process.env.TEST_DATABASE_URL
 if (!url) { console.log('Servidor: ignorado (defina TEST_DATABASE_URL para testar com PostgreSQL).'); process.exit(0) }
 const pg = (await import('pg')).default
 const db = new pg.Client({ connectionString: url }); await db.connect()
-await db.query('DROP TABLE IF EXISTS workspace_versions, workspaces, sessions, users CASCADE')
+await db.query('DROP TABLE IF EXISTS photo_files, workspace_versions, workspaces, sessions, users CASCADE')
 const port = 43000 + Math.floor(Math.random() * 1000), base = `http://127.0.0.1:${port}`
-const env = { ...process.env, DATABASE_URL: url, PORT: String(port), HOST: '127.0.0.1', ADMIN_USERNAME: 'chefe', ADMIN_PASSWORD: 'Senha-inicial-123' }
+const photoDir = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'campo-fotos-'))
+const env = { ...process.env, PHOTO_STORAGE_DIR: photoDir, DATABASE_URL: url, PORT: String(port), HOST: '127.0.0.1', ADMIN_USERNAME: 'chefe', ADMIN_PASSWORD: 'Senha-inicial-123' }
 const root = fileURLToPath(new URL('..', import.meta.url))
 const seed = spawn(process.execPath, ['server/seed.mjs'], { cwd: root, env, stdio: 'pipe' })
 await new Promise((resolve, reject) => seed.on('exit', code => code === 0 ? resolve() : reject(new Error('seed falhou'))))
@@ -49,7 +50,7 @@ try {
   if (page.status === 200) assert.match(page.text, /<meta name="campo-sync" content="api\/workspace">/)
   // Sincronização com controle de revisão
   const api = (session, path, options = {}) => call(session, `/api/workspace${path}`, { accept: 'application/json', headers: { 'X-CSRF-Token': csrf, ...(options.headers ?? {}) }, ...options })
-  const snapshot = (revision, names) => ({ schemaVersion: 3, revision, savedAt: new Date().toISOString(), data: { projects: names.map((name, i) => ({ id: `p${i}`, name, floors: [], relationships: [] })), projectId: 'p0', floorId: '', roomId: '' } })
+  const snapshot = (revision, names) => ({ schemaVersion: 4, revision, savedAt: new Date().toISOString(), data: { projects: names.map((name, i) => ({ id: `p${i}`, name, floors: [], relationships: [] })), projectId: 'p0', floorId: '', roomId: '' } })
   assert.equal((await api(admin, '')).status, 204)
   assert.equal((await api(admin, '', { method: 'PUT', json: { baseRevision: null, snapshot: { schemaVersion: 1 } } })).status, 422)
   assert.equal((await api(admin, '', { method: 'PUT', json: { baseRevision: null, snapshot: snapshot('r1', ['Casa']) }, headers: { 'X-CSRF-Token': 'x' } })).status, 403, 'CSRF na API')
@@ -91,6 +92,19 @@ try {
   assert.equal((await call(user, '/admin/usuarios')).status, 403)
   assert.equal((await call(user, '/admin/usuarios', { method: 'POST', form: { _csrf: userCsrf, name: 'x', username: 'hacker', role: 'admin' } })).status, 403)
   assert.equal((await call(user, '/api/workspace', { accept: 'application/json' })).status, 204, 'cada usuário tem seu próprio levantamento')
+  // Fotos sincronizadas: arquivos por usuário, CSRF exigido, isolamento entre usuários.
+  const photo = (session, path, init = {}) => fetch(`${base}/api/photos${path}`, { ...init, headers: { Accept: 'application/json', Origin: base, Cookie: session.header(), ...(init.headers ?? {}) } })
+  const bytes = new Uint8Array([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9])
+  assert.equal((await photo(user, '/foto-1', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: bytes })).status, 403, 'sem CSRF')
+  assert.equal((await photo(user, '/foto-1', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-CSRF-Token': userCsrf }, body: bytes })).status, 201)
+  assert.equal((await photo(user, '/foto-1/thumbnail', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-CSRF-Token': userCsrf }, body: new Uint8Array([7]) })).status, 201)
+  assert.equal((await photo(user, '/..%2Fsegredo', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-CSRF-Token': userCsrf }, body: bytes })).status, 422)
+  assert.equal((await photo(user, '/foto-2', { method: 'PUT', headers: { 'Content-Type': 'text/html', 'X-CSRF-Token': userCsrf }, body: bytes })).status, 422)
+  assert.deepEqual(await (await photo(user, '')).json(), [{ fileId: 'foto-1', mimeType: 'image/jpeg', size: 7, thumbnail: true }])
+  const got = await photo(user, '/foto-1'); assert.equal(got.status, 200); assert.equal(got.headers.get('content-type'), 'image/jpeg'); assert.deepEqual(new Uint8Array(await got.arrayBuffer()), bytes)
+  assert.deepEqual(new Uint8Array(await (await photo(user, '/foto-1?thumbnail=1')).arrayBuffer()), new Uint8Array([7]))
+  assert.equal((await photo(admin, '/foto-1')).status, 404, 'fotos de outro usuário não são visíveis')
+  assert.deepEqual(await (await photo(admin, '')).json(), [])
   // Desativar derruba a sessão; último admin não pode ser rebaixado
   const id = (await db.query("SELECT id FROM users WHERE username = 'fulana'")).rows[0].id
   assert.equal((await call(admin, `/admin/usuarios/${id}/desativar`, { method: 'POST', form: { _csrf: csrf } })).status, 200)
@@ -100,5 +114,5 @@ try {
   page = await call(admin, `/admin/usuarios/${id}/senha`, { method: 'POST', form: { _csrf: csrf } }); assert.match(page.text, /Senha temporária/)
   assert.equal((await call(admin, '/sair', { method: 'POST', form: { _csrf: csrf } })).location, '/entrar')
   assert.equal((await call(admin, '/api/workspace', { accept: 'application/json' })).status, 401)
-  console.log('Servidor: login, troca obrigatória de senha, CSRF/origem, papéis, isolamento por usuário, sincronização com revisão/409/histórico OK.')
+  console.log('Servidor: login, troca obrigatória de senha, CSRF/origem, papéis, isolamento por usuário, sincronização com revisão/409/histórico e fotos por usuário OK.')
 } finally { server.kill(); await db.end() }

@@ -27,6 +27,19 @@ npm test
 npm run preview
 ```
 
+## Rodada de campo: croqui, PDF em escala, arquivo do projeto, tema e conflitos (etapas 12–18)
+
+- **Encontros:** cantos novos nascem em **Automático**; um único aviso no topo lista os encontros sem dados (com "Presumir 90°"), e cada canto tem atalhos de um toque — **📏 Medir diagonal** (cria a diagonal e leva ao campo) e **✎ Informar ângulo**.
+- **Croqui:** tocar numa parede ou abertura leva ao campo dela; **pinça com dois dedos** aproxima e, com zoom, um dedo arrasta (botões ＋/－ e ⤢ para voltar); **cotas** da distância do canto até a abertura; objetos podem ser **arrastados** (com o mouse, ou com o dedo depois de selecionados), gravando a nova posição ao soltar.
+- **Aberturas:** vista da parede "de dentro" com cotas de **peitoril**, altura, largura e distância ao canto; porta sem sentido de abertura gera a pendência "sentido de abertura não informado".
+- **Desfazer:** botão "↶ Desfazer" no cabeçalho e Ctrl+Z (fora de campos de texto). Alterações rápidas viram um passo; incluir/excluir fotos reinicia o histórico para nunca deixar foto sem arquivo.
+- **Renomear:** projeto e pavimento pelo ⋯ do próprio item (edição ali mesmo); ambiente e subambiente só pelo campo "Nome do ambiente".
+- **Unidades (etapa 12):** exibição em mm/cm/m por projeto; o armazenamento continua em **metros** (decisão do projeto, já coberta por `units.mjs`) e `convertMeasurement` converte entre unidades sem ruído binário.
+- **Arquivo do projeto (etapa 15):** "Exportar projeto com fotos (.levantamento)" gera um ZIP com `project.json` (mesmo envelope e `schemaVersion` do armazenamento local, com tudo do projeto e os metadados das fotos) e `photos/` (originais e miniaturas). Ao importar, o arquivo é validado antes de qualquer gravação; se o projeto já existir, escolha **Importar como novo** (IDs novos e consistentes, displayIds iguais) ou **Substituir existente** (com confirmação).
+- **Tema (etapa 16):** Claro / Escuro / Sistema (segue `prefers-color-scheme`), salvo no aparelho; todas as cores estão em variáveis CSS (`src/theme.css`); fotos nunca recebem filtro; campos inválidos também mudam de borda (não só de cor). A impressão usa sempre o tema claro.
+- **PDF em escala real (etapa 17):** em "Exportar e importar", escolha A3/A2, retrato/paisagem e 1:20, 1:25, 1:50, 1:75 ou 1:100. O desenho nunca é ajustado à página: se não couber, o app avisa ("O ambiente não cabe em A3 na escala 1:20.") e sugere combinações que cabem. A prancha traz projeto, pavimento, AMB-ID, nome, pé-direito, escala, data, paredes com comprimentos e espessura em escala, ângulos, portas, janelas, PI, objetos, barra gráfica 0—1—2—3 m e o rodapé de impressão em 100%. PDF vetorial gerado no próprio app (`src/pdf/`), sem dependências.
+- **Sincronização (etapa 18, servidor opcional):** estados "Salvo localmente / Sincronizando... / Sincronizado", fotos sincronizadas com o servidor e conflitos entre aparelhos sempre visíveis, com escolha (ver `server/README.md`).
+
 ## Fotos de levantamento — etapa 14
 
 O painel **FOTOS** permite tirar foto com `capture="environment"` ou selecionar uma ou várias imagens da galeria/arquivos. Toda foto pertence a um ambiente e pode ser vinculada ao ambiente em geral, parede externa, porta, janela, vão, parede interna ou objeto. Os editores desses elementos oferecem **Adicionar foto** e a contagem de fotos vinculadas. Vínculos usam UUIDs e acompanham renomeações.

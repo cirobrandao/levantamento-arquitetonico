@@ -94,7 +94,7 @@ describe('envio em segundo plano', () => {
     expect(server.state?.meta.p1.updatedAt).toBe('2026-10-03T10:00:00Z')
   })
 
-  it('dois aparelhos: conflito resolvido por projeto, sem perder nada', async () => {
+  it('dois aparelhos: conflito no mesmo projeto mantém as duas versões e avisa (nunca sobrescreve em silêncio)', async () => {
     const server = new FakeServer()
     let t = 0; const clock = () => new Date(Date.UTC(2026, 9, 3, 10, t++)).toISOString()
     const a = device(server, 'A', ws(project('casa', 'Casa A0')), clock)
@@ -109,8 +109,16 @@ describe('envio em segundo plano', () => {
     await b.sync.flush(); await a.sync.flush()
     expect(server.state!.snapshot.data.projects.find(p => p.id === 'casa')!.name).toBe('Casa B1')
     expect(a.ref.data.projects.find(p => p.id === 'casa')!.name).toBe('Casa B1')
-    expect(server.state!.snapshot.data.projects.map(p => p.id).sort()).toEqual(['casa', 'outro'])
+    // A versão do aparelho A virou uma cópia (novo ID), enviada ao servidor; nada se perdeu.
+    const copy = server.state!.snapshot.data.projects.find(p => p.name.startsWith('Casa A1 (versão deste aparelho'))
+    expect(copy).toBeDefined(); expect(copy!.id).not.toBe('casa')
+    expect(server.state!.snapshot.data.projects).toHaveLength(3)
+    expect(a.ledger.conflicts).toMatchObject([{ kind: 'both', projectId: 'casa', copyId: copy!.id, name: 'Casa B1' }])
+    expect(b.ledger.conflicts).toEqual([])
     expect(a.ref.statuses.at(-1)).toBe('synced')
+    // B recebe a cópia na próxima busca.
+    await b.sync.pull()
+    expect(b.ref.data.projects.map(p => p.id)).toContain(copy!.id)
   })
 
   it('sessão expirada mantém pendente e não descarta dados', async () => {
@@ -120,6 +128,21 @@ describe('envio em segundo plano', () => {
     a.edit(a.ref.data); await a.sync.flush()
     expect(a.ref.statuses.at(-1)).toBe('auth')
     expect(a.ledger.pendingCount()).toBe(1)
+  })
+})
+
+describe('conflitos (mergeByProject com base)', () => {
+  const base = { a: stamp('2026-10-03T10:00:00Z') }
+  it('sem edição local, a versão remota entra normalmente (sem conflito)', () => {
+    const r = mergeByProject({ data: ws(project('a', 'Velho')), meta: base }, { data: ws(project('a', 'Novo')), meta: { a: stamp('2026-10-03T11:00:00Z') } }, { base })
+    expect(r.conflicts).toEqual([]); expect(r.data.projects.map(p => p.name)).toEqual(['Novo'])
+  })
+  it('excluído num aparelho e alterado no outro: mantém o alterado', () => {
+    const r = mergeByProject({ data: ws(project('a', 'Editado'), project('b')), meta: { a: stamp('2026-10-03T11:00:00Z'), b: stamp('2026-10-03T10:00:00Z') } },
+      { data: ws(project('b')), meta: { a: stamp('2026-10-03T12:00:00Z', true), b: stamp('2026-10-03T10:00:00Z') } }, { base: { ...base, b: stamp('2026-10-03T10:00:00Z') }, now: '2026-10-03T13:00:00Z' })
+    expect(r.data.projects.map(p => p.name)).toContain('Editado')
+    expect(r.meta.a).toEqual({ updatedAt: '2026-10-03T13:00:00Z' })
+    expect(r.conflicts[0]).toMatchObject({ kind: 'revived', projectId: 'a' })
   })
 })
 
