@@ -4,9 +4,10 @@ import assert from 'node:assert/strict'
 import ts from 'typescript'
 const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
 const moduleUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+const unitsUrl = moduleUrl(transpile('../src/units.ts'))
 const cornersUrl = moduleUrl(transpile('../src/corners.ts'))
 const tolerancesUrl = moduleUrl(transpile('../src/tolerances.ts'))
-const link = source => source.replaceAll("'./corners'", JSON.stringify(cornersUrl)).replaceAll('"./corners"', JSON.stringify(cornersUrl)).replaceAll("'./tolerances'", JSON.stringify(tolerancesUrl)).replaceAll('"./tolerances"', JSON.stringify(tolerancesUrl))
+const link = source => source.replaceAll("'./units'", JSON.stringify(unitsUrl)).replaceAll('"./units"', JSON.stringify(unitsUrl)).replaceAll("'./corners'", JSON.stringify(cornersUrl)).replaceAll('"./corners"', JSON.stringify(cornersUrl)).replaceAll("'./tolerances'", JSON.stringify(tolerancesUrl)).replaceAll('"./tolerances"', JSON.stringify(tolerancesUrl))
 const openingsUrl = moduleUrl(link(transpile('../src/openings.ts')))
 const diagonalsUrl = moduleUrl(link(transpile('../src/diagonals.ts')))
 const geometryUrl = moduleUrl(link(transpile('../src/geometry.ts')).replace("'./diagonals'", JSON.stringify(diagonalsUrl)).replace('"./diagonals"', JSON.stringify(diagonalsUrl)))
@@ -15,7 +16,7 @@ const { getCorners } = await import(cornersUrl)
 const { buildPerimeter } = await import(geometryUrl)
 const { getWallReferences, buildOpeningLayout } = await import(openingsUrl)
 const { internalWallLabel, buildInternalWallLayout, fitInternalWallsSketch, placeInternalWallLabels } = await import(internalWallsUrl)
-const { getSketchLabelReservations } = await import(moduleUrl(transpile('../src/sketchLabels.ts')))
+const { getSketchLabelReservations } = await import(moduleUrl(link(transpile('../src/sketchLabels.ts'))))
 const { createRoom, id, updateRoom, findRoom } = await import(moduleUrl(transpile('../src/domain.ts')))
 const almost = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} ≈ ${expected}`)
 const walls = [2, 4, 2, 4].map((lengthM, index) => ({ id: id(), label: String.fromCharCode(65 + index), lengthM }))

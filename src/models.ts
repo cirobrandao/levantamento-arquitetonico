@@ -1,6 +1,7 @@
 export type MeasurementSource = 'measured' | 'informed' | 'assumed' | 'calculated'
 // Todos os comprimentos são armazenados em metros.
-export interface Wall { id: string; label: string; lengthM: number | null; sharedWallReference?: { roomId: string; wallId: string } }
+export type WallType = 'masonry' | 'drywall' | 'concrete' | 'glass' | 'wood' | 'partition' | 'other'
+export interface Wall { id: string; label: string; lengthM: number | null; thickness?: number | null; wallType?: WallType; customWallType?: string; sharedWallReference?: { roomId: string; wallId: string } }
 export type AngleSource = 'assumed' | 'informed' | 'calculated'
 export interface Corner { id: string; wallIds: [string, string]; angleDegrees: number | null; angleSource: AngleSource | null }
 export interface Diagonal { id: string; cornerIds: [string, string]; lengthM: number | null; source: 'measured' }
@@ -23,6 +24,15 @@ export interface RoomRelationship {
   targetRoomId: string; targetElementId?: string; note?: string
 }
 export interface PendingItem { id: string; description: string; resolved: boolean; kind?: 'manual' | 'technical'; reason?: 'check_on_site' | 'doubtful'; elementId?: string; field?: string; note?: string; issueKey?: string }
-export interface Room { id: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; pendingItems: PendingItem[]; subrooms: Room[] }
+export type RoomObjectCategory = 'furniture' | 'equipment' | 'object' | 'other'
+export type RoomObjectShape = 'rectangle' | 'circle' | 'line'
+export interface RoomObjectDimensions { widthM?: number | null; depthM?: number | null; diameterM?: number | null; lengthM?: number | null }
+export interface RoomObject {
+  id: string; displayId: string; roomId: string; name: string;
+  category: RoomObjectCategory; shape: RoomObjectShape; dimensions: RoomObjectDimensions;
+  // Centro do objeto no sistema local: origem no início da primeira parede.
+  position: { xM: number | null; yM: number | null }; rotationDegrees: number | null; note?: string
+}
+export interface Room { id: string; displayId?: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; objects?: RoomObject[]; objectCounter?: number; pendingItems: PendingItem[]; subrooms: Room[] }
 export interface Floor { id: string; name: string; rooms: Room[] }
-export interface Project { id: string; name: string; floors: Floor[]; relationships: RoomRelationship[] }
+export interface Project { id: string; name: string; measurementUnit?: import('./units').MeasurementUnit; roomDisplayCounter?: number; floors: Floor[]; relationships: RoomRelationship[] }

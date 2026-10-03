@@ -1,7 +1,10 @@
+import { migrateRoomObjects } from './roomObjects'
 import type { Project, Room } from './models'
 import { generateId } from './domain'
+import { ensureProjectMetadata } from './projectMetadata'
+import { isMeasurementUnit } from './units'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 3
 export const DATABASE_NAME = 'campo-levantamentos'
 export const JOURNAL_KEY = 'campo-autosave-journal-v1'
 export interface WorkspaceData { projects: Project[]; projectId: string; floorId: string; roomId: string }
@@ -19,18 +22,18 @@ export function createSnapshot(data: WorkspaceData): StoredWorkspace {
 export function readSnapshot(value: unknown): StoredWorkspace {
   if (!value || typeof value !== 'object') throw new Error('O arquivo local de projetos é inválido. Os dados existentes foram preservados.')
   const record = value as StoredWorkspace
-  if (record.schemaVersion !== SCHEMA_VERSION) throw new Error('Esta versão dos dados locais não é compatível com a aplicação. Os projetos existentes foram preservados.')
+  if (record.schemaVersion !== 1 && record.schemaVersion !== 2 && record.schemaVersion !== SCHEMA_VERSION) throw new Error('Esta versão dos dados locais não é compatível com a aplicação. Os projetos existentes foram preservados.')
   const number = (value: unknown) => value === null || typeof value === 'number'
   const strings = (value: unknown): value is string[] => Array.isArray(value) && value.length === 2 && value.every(item => typeof item === 'string')
   const entity = (value: unknown): value is { id: string } => !!value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string'
   const counter = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
   // Validate element shapes before the UI can dereference them. Invalid measured
   // numbers (NaN, negatives, etc.) remain valid stored input for the checklist.
-  const roomValid = (room: Room): boolean => entity(room) && typeof room.name === 'string' && typeof room.floorId === 'string' && number(room.ceilingHeightM)
+  const roomValid = (room: Room): boolean => entity(room) && typeof room.name === 'string' && typeof room.floorId === 'string' && (room.displayId === undefined || typeof room.displayId === 'string') && number(room.ceilingHeightM)
     && ['walls', 'corners', 'diagonals', 'openings', 'internalWalls', 'pendingItems', 'subrooms'].every(key => Array.isArray(room[key as keyof Room]))
     && !!room.openingCounters && ['door', 'window', 'gap'].every(key => counter(room.openingCounters[key as keyof typeof room.openingCounters]))
     && counter(room.internalWallCounter)
-    && room.walls.every(wall => entity(wall) && typeof wall.label === 'string' && number(wall.lengthM) && (!wall.sharedWallReference || typeof wall.sharedWallReference.roomId === 'string' && typeof wall.sharedWallReference.wallId === 'string'))
+    && room.walls.every(wall => entity(wall) && typeof wall.label === 'string' && number(wall.lengthM) && (wall.thickness === undefined || number(wall.thickness)) && (wall.wallType === undefined || ['masonry', 'drywall', 'concrete', 'glass', 'wood', 'partition', 'other'].includes(wall.wallType)) && (wall.customWallType === undefined || typeof wall.customWallType === 'string') && (!wall.sharedWallReference || typeof wall.sharedWallReference.roomId === 'string' && typeof wall.sharedWallReference.wallId === 'string'))
     && room.corners.every(corner => entity(corner) && strings(corner.wallIds) && number(corner.angleDegrees) && [null, 'assumed', 'informed', 'calculated'].includes(corner.angleSource))
     && room.diagonals.every(diagonal => entity(diagonal) && strings(diagonal.cornerIds) && number(diagonal.lengthM))
     && room.openings.every(opening => entity(opening) && typeof opening.label === 'string' && ['door', 'window', 'gap'].includes(opening.type) && typeof opening.wallId === 'string' && typeof opening.referenceCornerId === 'string' && [opening.widthM, opening.heightM, opening.sillHeightM, opening.offsetM].every(number))
@@ -38,11 +41,15 @@ export function readSnapshot(value: unknown): StoredWorkspace {
       wall.origin.type === 'perimeter_wall' ? typeof wall.origin.wallId === 'string' && typeof wall.origin.referenceCornerId === 'string' && number(wall.origin.distanceM)
       : wall.origin.type === 'internal_wall' ? typeof wall.origin.internalWallId === 'string' && ['start', 'end'].includes(wall.origin.referenceEndpoint) && number(wall.origin.distanceM)
       : wall.origin.type === 'free' && !!wall.origin.position && typeof wall.origin.position.xM === 'number' && typeof wall.origin.position.yM === 'number'))
+    && (room.objectCounter === undefined || counter(room.objectCounter))
+    && (room.objects === undefined || Array.isArray(room.objects) && room.objects.every(object => entity(object) && typeof object.displayId === 'string' && object.roomId === room.id && typeof object.name === 'string' && ['furniture', 'equipment', 'object', 'other'].includes(object.category) && ['rectangle', 'circle', 'line'].includes(object.shape) && !!object.dimensions && typeof object.dimensions === 'object' && ['widthM', 'depthM', 'diameterM', 'lengthM'].every(key => object.dimensions[key as keyof typeof object.dimensions] === undefined || number(object.dimensions[key as keyof typeof object.dimensions])) && !!object.position && number(object.position.xM) && number(object.position.yM) && number(object.rotationDegrees) && (object.note === undefined || typeof object.note === 'string')))
     && room.pendingItems.every(item => entity(item) && typeof item.description === 'string' && typeof item.resolved === 'boolean')
     && room.subrooms.every(roomValid)
   const data = record.data
   if (typeof record.revision !== 'string' || typeof record.savedAt !== 'string' || !data || !Array.isArray(data.projects) || !data.projects.length || !['projectId', 'floorId', 'roomId'].every(key => typeof data[key as keyof WorkspaceData] === 'string') || !data.projects.every(project => project && typeof project.id === 'string' && typeof project.name === 'string' && Array.isArray(project.relationships) && Array.isArray(project.floors) && project.floors.every(floor => floor && typeof floor.id === 'string' && typeof floor.name === 'string' && Array.isArray(floor.rooms) && floor.rooms.every(roomValid)))) throw new Error('Os dados locais estão incompletos. Não foram sobrescritos.')
   if (!data.projects.every(project => project.relationships.every(relation => entity(relation) && typeof relation.sourceRoomId === 'string' && typeof relation.targetRoomId === 'string' && ['opening_connection', 'shared_wall', 'adjacency', 'manual_reference'].includes(relation.type)))) throw new Error('As relações locais estão incompletas. Os dados existentes foram preservados.')
+  if (!data.projects.every(project => (project.measurementUnit === undefined || isMeasurementUnit(project.measurementUnit)) && (project.roomDisplayCounter === undefined || counter(project.roomDisplayCounter)))) throw new Error('Configuração do projeto inválida. Os dados existentes foram preservados.')
+  if (record.schemaVersion < SCHEMA_VERSION) return { ...record, schemaVersion: SCHEMA_VERSION, data: { ...data, projects: data.projects.map(project => { const migrated = ensureProjectMetadata(project); return { ...migrated, floors: migrated.floors.map(floor => ({ ...floor, rooms: floor.rooms.map(migrateRoomObjects) })) } }) } }
   return record
 }
 // The synchronous journal protects edits made immediately before closing the page.

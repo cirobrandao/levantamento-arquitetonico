@@ -1,3 +1,4 @@
+import { formatMeasurement } from './units'
 import type { Project, Room } from './models'
 import { getWallReferences } from './openings'
 import { buildRoomGeometry } from './roomGeometry'
@@ -15,7 +16,7 @@ export function measurementTargets(room: Room): CheckTarget[] {
     for (const [field, caption] of fields) targets.push({ key: `${elementId}:${field}`, elementId, field, label: `${label} — ${caption}` })
   }
   add(room.id, 'Ambiente', [['name', 'nome'], ['ceilingHeightM', 'pé-direito']])
-  room.walls.forEach(wall => add(wall.id, `Parede ${wall.label}`, [['lengthM', 'comprimento']]))
+  room.walls.forEach(wall => add(wall.id, `Parede ${wall.label}`, [['lengthM', 'comprimento'], ['thickness', 'espessura']]))
   getCorners(room.walls, room.corners).forEach((corner, index) => add(corner.id, `Canto ${room.walls[index].label}${room.walls[(index + 1) % room.walls.length].label}`, [['angleDegrees', 'ângulo']]))
   room.openings.forEach(opening => add(opening.id, opening.label, [['widthM', 'largura'], ['heightM', 'altura'], ...(opening.type === 'window' ? [['sillHeightM', 'peitoril']] as [string, string][] : []), ['offsetM', 'posição'], ['referenceCornerId', 'canto de referência']]))
   room.diagonals.forEach((diagonal, index) => add(diagonal.id, `Diagonal ${index + 1}`, [['lengthM', 'distância'], ['cornerIds', 'cantos']]))
@@ -37,11 +38,12 @@ export function roomChecklist(room: Room, project: Project, survey?: RoomGeometr
   require(!!room.name.trim(), room.id, 'name', 'Nome do ambiente ausente.')
   require(positive(room.ceilingHeightM), room.id, 'ceilingHeightM', 'Pé-direito não informado ou inválido.')
   room.walls.forEach(wall => require(positive(wall.lengthM), wall.id, 'lengthM', `Parede ${wall.label} sem comprimento válido.`))
+  room.walls.forEach(wall => { if (wall.thickness != null && !positive(wall.thickness)) warning(wall.id, 'thickness', `Parede ${wall.label}: espessura opcional inválida.`) })
   const derived = survey ?? buildRoomGeometry(room)
   const geometry = derived.perimeter
   const sufficient = room.walls.length >= 3 && geometry.allMeasured && geometry.allAnglesDefined
   require(sufficient, room.id, 'geometry', 'Geometria insuficiente: confira paredes, comprimentos e ângulos.')
-  if (room.walls.length >= 3 && geometry.allMeasured && geometry.allAnglesDefined && (geometry.closureM > geometryTolerance.closureWarningM || geometry.orientationMismatch > geometryTolerance.angleDifferenceWarningDegrees)) warning(room.id, 'geometry', `Grande divergência de fechamento (${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(geometry.closureM * 100)} cm). Verifique as medidas e os ângulos.`)
+  if (room.walls.length >= 3 && geometry.allMeasured && geometry.allAnglesDefined && (geometry.closureM > geometryTolerance.closureWarningM || geometry.orientationMismatch > geometryTolerance.angleDifferenceWarningDegrees)) warning(room.id, 'geometry', `Grande divergência de fechamento (${formatMeasurement(geometry.closureM, project.measurementUnit ?? 'm')}). Verifique as medidas e os ângulos.`)
   geometry.corners.forEach(corner => {
     if (!validAngle(corner.angleDegrees)) warning(corner.id, 'angleDegrees', `Canto ${corner.label}: ângulo ainda não definido ou inválido.`)
   })

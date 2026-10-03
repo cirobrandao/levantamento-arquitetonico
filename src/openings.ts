@@ -1,3 +1,5 @@
+import { formatMeasurement } from './units'
+import type { MeasurementUnit } from './units'
 import type { Corner, Opening, OpeningType, Wall } from './models'
 import type { buildPerimeter, Point } from './geometry'
 import { getCorners } from './corners'
@@ -7,8 +9,7 @@ type Perimeter = ReturnType<typeof buildPerimeter>
 export const openingNames: Record<OpeningType, string> = { door: 'Porta', window: 'Janela', gap: 'Vão' }
 const prefixes: Record<OpeningType, string> = { door: 'P', window: 'J', gap: 'V' }
 export const openingLabel = (type: OpeningType, sequence: number) => `${prefixes[type]}${String(sequence).padStart(2, '0')}`
-const cm = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
-export const formatCm = (value: number | null) => value !== null && Number.isFinite(value) ? cm.format(value * 100) : '?'
+export const formatCm = (value: number | null) => formatMeasurement(value, 'cm', false)
 const positive = (value: number | null): value is number => value !== null && Number.isFinite(value) && value > 0
 const nonnegative = (value: number | null): value is number => value !== null && Number.isFinite(value) && value >= 0
 
@@ -81,7 +82,7 @@ export interface LabelBox { x: number; y: number; width: number; height: number 
 function intersects(a: LabelBox, b: LabelBox) {
   return a.x < b.x + b.width + 4 && a.x + a.width + 4 > b.x && a.y < b.y + b.height + 4 && a.y + a.height + 4 > b.y
 }
-export function placeOpeningLabels(placements: OpeningPlacement[], project: (point: Point) => Point, reserved: LabelBox[]) {
+export function placeOpeningLabels(placements: OpeningPlacement[], project: (point: Point) => Point, reserved: LabelBox[], unit: MeasurementUnit = 'cm') {
   const occupied = [...reserved]
   return placements.map(placement => {
     const start = project(placement.start), end = project(placement.end)
@@ -89,8 +90,8 @@ export function placeOpeningLabels(placements: OpeningPlacement[], project: (poi
     const normal = { x: -placement.direction.y, y: placement.direction.x }
     const height = placement.opening.type === 'window' ? 50 : 38
     const opening = placement.opening
-    const lines = [opening.label, `${formatCm(opening.widthM)} × ${formatCm(opening.heightM)} cm`, `${formatCm(opening.offsetM)} cm de ${placement.reference.label}`]
-    if (opening.type === 'window') lines.push(`P=${formatCm(opening.sillHeightM)} cm`)
+    const lines = [opening.label, `${formatMeasurement(opening.widthM,unit,false)} × ${formatMeasurement(opening.heightM,unit)}`, `${formatMeasurement(opening.offsetM,unit)} de ${placement.reference.label}`]
+    if (opening.type === 'window') lines.push(`P=${formatMeasurement(opening.sillHeightM,unit)}`)
     const width = Math.min(130, Math.max(64, ...lines.map(line => line.length * 5.3 + 8)))
     const candidates = [44, 90, 136, -44, -90].flatMap(distance => [0, -35, 35, -55, 55, -80, 80].map(shift => {
       const x = Math.max(width / 2 + 8, Math.min(432 - width / 2, anchor.x + normal.x * distance + placement.direction.x * shift))

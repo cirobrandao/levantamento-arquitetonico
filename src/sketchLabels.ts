@@ -1,6 +1,8 @@
+import { formatMeasurement } from './units'
+import type { MeasurementUnit } from './units'
 import type { buildPerimeter } from './geometry'
 import type { LabelBox } from './openings'
-export function getSketchLabelLayout(geometry: ReturnType<typeof buildPerimeter>) {
+export function getSketchLabelLayout(geometry: ReturnType<typeof buildPerimeter>, unit: MeasurementUnit = 'm') {
   const positions = new Map<string, { x: number; y: number; box: LabelBox }>()
   const boxes: LabelBox[] = []
   const place = (key: string, x: number, y: number, width: number, height: number) => {
@@ -20,7 +22,7 @@ export function getSketchLabelLayout(geometry: ReturnType<typeof buildPerimeter>
   })
   geometry.segments.forEach(segment => {
     const point = geometry.project({x:(segment.start.x+segment.end.x)/2,y:(segment.start.y+segment.end.y)/2})
-    place(`wall:${segment.wall.id}`,point.x+segment.direction.y*27,point.y-segment.direction.x*27,80,34)
+    place(`wall:${segment.wall.id}`,point.x+segment.direction.y*27,point.y-segment.direction.x*27,Math.max(80, formatMeasurement(segment.wall.lengthM, unit).length*7+8),34)
   })
   const first = geometry.segments[0]
   if (first) {
@@ -29,7 +31,7 @@ export function getSketchLabelLayout(geometry: ReturnType<typeof buildPerimeter>
   }
   geometry.diagonalSegments.forEach(segment => {
     const point = geometry.project({x:(segment.start.x+segment.end.x)/2,y:(segment.start.y+segment.end.y)/2})
-    place(`diagonal:${segment.diagonal.id}`,point.x,point.y,74,30)
+    place(`diagonal:${segment.diagonal.id}`,point.x,point.y,Math.max(74,formatMeasurement(segment.diagonal.lengthM,unit).length*6+8),30)
   })
   return { positions, boxes }
 }

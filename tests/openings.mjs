@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import ts from 'typescript'
 const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
 const moduleUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+const unitsUrl = moduleUrl(transpile('../src/units.ts'))
 const cornersUrl = moduleUrl(transpile('../src/corners.ts'))
 const tolerancesUrl = moduleUrl(transpile('../src/tolerances.ts'))
-const link = source => source.replaceAll("'./corners'", JSON.stringify(cornersUrl)).replaceAll('"./corners"', JSON.stringify(cornersUrl)).replaceAll("'./tolerances'", JSON.stringify(tolerancesUrl)).replaceAll('"./tolerances"', JSON.stringify(tolerancesUrl))
+const link = source => source.replaceAll("'./units'", JSON.stringify(unitsUrl)).replaceAll('"./units"', JSON.stringify(unitsUrl)).replaceAll("'./corners'", JSON.stringify(cornersUrl)).replaceAll('"./corners"', JSON.stringify(cornersUrl)).replaceAll("'./tolerances'", JSON.stringify(tolerancesUrl)).replaceAll('"./tolerances"', JSON.stringify(tolerancesUrl))
 const diagonalsUrl = moduleUrl(link(transpile('../src/diagonals.ts')))
 const geometryUrl = moduleUrl(link(transpile('../src/geometry.ts')).replace("'./diagonals'", JSON.stringify(diagonalsUrl)).replace('"./diagonals"', JSON.stringify(diagonalsUrl)))
 const { buildPerimeter } = await import(geometryUrl)

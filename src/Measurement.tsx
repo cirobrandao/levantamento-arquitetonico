@@ -1,0 +1,20 @@
+import { createContext, useContext, useEffect, useState } from 'react'
+import type { InputHTMLAttributes, Ref } from 'react'
+import { inputMeasurement, parseMeasurement, formatMeasurement } from './units'
+import type { MeasurementUnit } from './units'
+export const UnitContext = createContext<MeasurementUnit>('m')
+export function useMeasurements() {
+  const unit = useContext(UnitContext)
+  return { unit, format: (value: number | null | undefined, suffix = true) => formatMeasurement(value, unit, suffix) }
+}
+type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
+  value: number | null | undefined; onValue: (value: number | null) => void; ref?: Ref<HTMLInputElement>
+}
+export function MeasurementInput({ value, onValue, ...props }: Props) {
+  const { unit } = useMeasurements()
+  const [draft, setDraft] = useState(() => inputMeasurement(value, unit))
+  useEffect(() => { setDraft(current => Object.is(parseMeasurement(current, unit), value) ? current : inputMeasurement(value, unit)) }, [value, unit])
+  return <input {...props} type="text" inputMode="decimal" value={draft} onChange={event => {
+    setDraft(event.target.value); onValue(parseMeasurement(event.target.value, unit))
+  }}/>
+}

@@ -3,6 +3,7 @@ import { Autosave } from './autosave'
 import type { SaveStatus } from './autosave'
 import { clearJournal, createSnapshot, loadWorkspace, restoreNavigation, saveWorkspace, writeJournal } from './storage'
 import type { WorkspaceData } from './storage'
+import { ensureProjectMetadata } from './projectMetadata'
 export function useLocalWorkspace(initial: WorkspaceData) {
   const [workspace, setWorkspace] = useState(initial)
   const [ready, setReady] = useState(false)
@@ -16,7 +17,7 @@ export function useLocalWorkspace(initial: WorkspaceData) {
     saver.current = controller
     void loadWorkspace().then(saved => {
       if (canceled) return
-      if (saved) setWorkspace(restoreNavigation(saved.data))
+      if (saved) setWorkspace(restoreNavigation({ ...saved.data, projects: saved.data.projects.map(ensureProjectMetadata) }))
       try { void globalThis.navigator?.storage?.persist?.().catch(error => console.warn('Retenção persistente não concedida.', error)) } catch (error) { console.warn('Retenção persistente indisponível.', error) }
       setReady(true)
     }).catch(error => { if (!canceled) setLoadError(error instanceof Error ? error.message : 'Não foi possível abrir os projetos locais.') })

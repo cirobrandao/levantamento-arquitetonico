@@ -27,6 +27,24 @@ npm test
 npm run preview
 ```
 
+## Objetos, móveis e equipamentos — etapa 13
+
+Cada ambiente possui objetos independentes (`RoomObject`), com UUID estável, ID visual `OBJ-001` etc., nome, categoria, forma, dimensões, centro X/Y, rotação e observação. A numeração é local ao ambiente e seu contador é preservado após exclusões. Fotos poderão usar o UUID posteriormente; não há recursos de fotos nesta etapa.
+
+O formulário aceita retângulo (largura/profundidade), círculo (diâmetro) e segmento (comprimento). Dimensões e posições seguem a unidade do projeto, com metros como unidade canônica. O centro utiliza a origem no início da primeira parede: X no sentido da parede, Y para baixo no croqui. A posição numérica não altera dimensões. Rotação positiva segue o sentido horário do SVG.
+
+Clicar ou usar Enter/Espaço sobre um objeto no SVG destaca o elemento e mostra seu formulário. No mobile, a seleção recolhe o croqui expandido para permitir editar. IDs e dimensões aparecem quando há espaço; elementos pequenos mantêm identificação acessível e título. O enquadramento considera objetos e PIs, alterando apenas a projeção gráfica. Não há arraste, snap ou posicionamento automático.
+
+O schema 3 migra versões 1 e 2 acrescentando a coleção e o contador de objetos, mantendo medidas e referências existentes. Autosave/IndexedDB incluem toda a entidade. Excluir exige confirmação e preserva paredes e demais objetos. A suíte `tests/room-objects.mjs` verifica mesa, botijão, equipamento a 45°, segmento, preservação de medidas entre unidades, IDs, migração, exclusão e armazenamento. `npm test` agora executa dez suítes.
+
+## Unidades, paredes e IDs visuais — etapa 12
+
+O projeto permite selecionar mm, cm ou m. Campos, resumos e croqui acompanham essa escolha, que é salva automaticamente. Conversão, parsing de vírgula/ponto e formatação estão centralizados em `src/units.ts`; os campos usam `src/Measurement.tsx`. Para preservar a precisão dos dados anteriores e os cálculos existentes, a unidade canônica continua sendo metros (`lengthM`, `ceilingHeightM` etc.). Trocar a unidade altera apenas a apresentação, nunca as dimensões armazenadas.
+
+Paredes do perímetro aceitam `thickness` opcional, também em metros canônicos, e `wallType` com identificadores estáveis. “Outro” permite um nome personalizado. A largura gráfica acompanha a espessura na escala do SVG, mantendo as interrupções das aberturas; o croqui continua aproximado.
+
+Cada ambiente e subambiente recebe um `displayId` como `AMB-001`, independente do UUID. Um contador persistente por projeto impede reutilização automática após exclusões. Renomear não altera o ID visual. O schema 2 migra os dados do schema 1 acrescentando metadados e IDs, sem modificar medidas, ângulos ou relações. `tests/units.mjs` verifica conversão, formulário/SVG, migração, persistência, numeração e preservação da geometria. Nenhum recurso das próximas etapas foi acrescentado.
+
 ## Revisão e estabilização — etapa 11
 
 O [relatório da etapa 11](RELATORIO-ETAPA-11.md) registra problemas corrigidos, matriz dos 31 testes, responsividade, acesso local, recuperação de erros e limitações. `npm test` executa as oito suítes automatizadas. A etapa mantém os recursos existentes e não implementa Planta Geral.

@@ -18,7 +18,7 @@ export function generateId(): string {
   return `local-${idSession}-${Date.now().toString(36)}-${(++idCounter).toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 export const id = generateId
-export const createRoom = (name: string, floorId = '', parentRoomId?: string): Room => ({ id: id(), name, floorId, parentRoomId, ceilingHeightM: null, walls: [], corners: [], diagonals: [], openings: [], openingCounters: { door: 0, window: 0, gap: 0 }, internalWalls: [], internalWallCounter: 0, pendingItems: [], subrooms: [] })
+export const createRoom = (name: string, floorId = '', parentRoomId?: string): Room => ({ id: id(), name, floorId, parentRoomId, ceilingHeightM: null, walls: [], corners: [], diagonals: [], openings: [], openingCounters: { door: 0, window: 0, gap: 0 }, internalWalls: [], internalWallCounter: 0, objects: [], objectCounter: 0, pendingItems: [], subrooms: [] })
 export function wallLabel(index: number): string {
   let label = ''
   for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) label = String.fromCharCode(65 + (n - 1) % 26) + label

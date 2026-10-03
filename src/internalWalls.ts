@@ -1,3 +1,5 @@
+import { formatMeasurement } from './units'
+import type { MeasurementUnit } from './units'
 import type { Corner, InternalWall, Wall } from './models'
 import type { buildPerimeter, Point } from './geometry'
 import { getWallReferences } from './openings'
@@ -69,12 +71,11 @@ export function fitInternalWallsSketch(perimeter: Perimeter, placements: Interna
   return { ...perimeter, scale, project: (point: Point) => ({ x: 220 + (point.x - (minX + maxX) / 2) * scale, y: 175 + (point.y - (minY + maxY) / 2) * scale }) }
 }
 
-const meters = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-export function placeInternalWallLabels(placements: InternalWallPlacement[], project: (point: Point) => Point, reserved: LabelBox[]) {
+export function placeInternalWallLabels(placements: InternalWallPlacement[], project: (point: Point) => Point, reserved: LabelBox[], unit: MeasurementUnit = 'm') {
   const occupied = [...reserved]
   return placements.map(placement => {
     const middle = project({ x: (placement.start.x + placement.end.x) / 2, y: (placement.start.y + placement.end.y) / 2 })
-    const width = Math.max(46, placement.internalWall.label.length * 7 + 8, `${meters.format(placement.internalWall.lengthM!)} m`.length * 5.5 + 8)
+    const width = Math.max(46, placement.internalWall.label.length * 7 + 8, formatMeasurement(placement.internalWall.lengthM, unit).length * 5.5 + 8)
     const candidates = [22, -22, 40, -40, 60, -60].flatMap(offset => [0, 25, -25, 45, -45].map(shift => {
       const x = Math.max(width / 2 + 8, Math.min(432 - width / 2, middle.x + placement.direction.y * offset + placement.direction.x * shift))
       const y = Math.max(56, Math.min(300, middle.y - placement.direction.x * offset + placement.direction.y * shift - 4))
