@@ -201,7 +201,8 @@ export class RemoteSync {
     this.schedule()
   }
   schedule(delay = this.options.delayMs ?? 1_500) {
-    if (this.lastStatus !== 'auth') this.report(this.lastStatus === 'offline' || this.lastStatus === 'error' ? this.lastStatus : 'syncing')
+    const offline = globalThis.navigator?.onLine === false
+    if (this.lastStatus !== 'auth') this.report(offline ? 'offline' : this.lastStatus === 'offline' || this.lastStatus === 'error' ? this.lastStatus : 'syncing')
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => { this.timer = undefined; void this.flush() }, delay)
   }
