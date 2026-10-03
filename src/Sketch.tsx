@@ -14,7 +14,7 @@ import { getSketchLabelLayout } from './sketchLabels'
 import type { RoomGeometry } from './roomGeometry'
 
 const degrees = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
-export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void }) {
+export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject, variant = 'panel' }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void; variant?: 'panel' | 'report' }) {
   const { unit, format } = useMeasurements()
   const [expanded, setExpanded] = useState(false)
   const [selection, setSelection] = useState<{ roomId: string; wallId: string }>()
@@ -34,7 +34,7 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
   const selected = selection?.roomId === room?.id ? selection?.wallId : undefined
   const selectedObject = room?.objects?.find(object => object.id === selectedObjectId)
   const selectedWall = room?.walls.find(wall => wall.id === selected)
-  return <aside className={`sketch-panel ${expanded ? 'expanded' : ''}`} aria-label="Croqui do ambiente">
+  return <aside className={variant === 'report' ? 'sketch-panel sketch-report' : `sketch-panel ${expanded ? 'expanded' : ''}`} aria-label="Croqui do ambiente">
     <div className="sketch-heading"><div><span className="eyebrow">VISUALIZAÇÃO</span><h2>Croqui do ambiente</h2></div><button className="expand" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? 'Recolher' : 'Expandir'}</button></div>
     <div className="sketch-paper"><svg viewBox="0 0 440 340" role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`}>
       <defs><pattern id={`${svgId}-grid`} width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#d7ddd4"/></pattern><marker id={`${svgId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#947239"/></marker></defs>
