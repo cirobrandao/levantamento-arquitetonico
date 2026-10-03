@@ -14,8 +14,10 @@ export function parseMeasurement(text: string, unit: MeasurementUnit): number | 
 export function inputMeasurement(value: number | null | undefined, unit: MeasurementUnit): string {
   return value == null || !Number.isFinite(value) ? '' : String(toDisplay(value, unit))
 }
+// Em metros, rótulos seguem o padrão técnico com duas casas ("4,20 m");
+// casas extras medidas em campo continuam visíveis.
 export function formatMeasurement(value: number | null | undefined, unit: MeasurementUnit, suffix = true): string {
   if (value == null || !Number.isFinite(value)) return '?'
-  const text = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 6 }).format(toDisplay(value, unit))
+  const text = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: unit === 'm' ? 2 : 0, maximumFractionDigits: 6 }).format(toDisplay(value, unit))
   return suffix ? `${text} ${unit}` : text
 }
