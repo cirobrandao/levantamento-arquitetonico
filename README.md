@@ -39,6 +39,14 @@ Excluir uma foto exige confirmação; seus Blobs são removidos na mesma transa�
 
 Verificação: `npm test` executa onze suítes. `tests/photos.mjs` cobre busca e filtros, renomeação, desvinculação, preservação de medidas, migração de schemas/banco, Blobs separados, reabertura e exclusão de arquivos. `fake-indexeddb` é utilizado apenas nos testes. A interface foi verificada em largura mobile pela rede local, com botões de captura grandes e mini croqui persistente; a câmera física precisa ser validada no celular. Não há backup/exportação nesta etapa.
 
+## Testes obrigatórios com Vitest e uso offline (PWA) — complemento das etapas 9 a 11
+
+`npm test` executa as suítes `tests/*.mjs` e, em seguida, os **21 testes obrigatórios da etapa 11** com Vitest (`tests/etapa11/`; `npm run test:etapa11` roda só eles). A persistência é testada com IndexedDB simulado (`fake-indexeddb`); o uso no celular tem verificação estrutural automática e roteiro manual em [tests/etapa11/README.md](tests/etapa11/README.md).
+
+Para a obra sem internet, a aplicação pode ser instalada na tela inicial e aberta offline: `public/sw.js` busca a página na rede primeiro e guarda uma cópia; os arquivos do build são servidos do cache. Os dados continuam no IndexedDB. O registro ocorre só no build de produção, em HTTPS ou `localhost`, e funciona no GitHub Pages em subpasta.
+
+Rótulos em metros passam a usar duas casas decimais (`A 4,20 m`, `PI01 1,00 m`), como no padrão das etapas 6 e 10; casas extras digitadas em campo continuam visíveis.
+
 ## Objetos, móveis e equipamentos — etapa 13
 
 Cada ambiente possui objetos independentes (`RoomObject`), com UUID estável, ID visual `OBJ-001` etc., nome, categoria, forma, dimensões, centro X/Y, rotação e observação. A numeração é local ao ambiente e seu contador é preservado após exclusões. Fotos poderão usar o UUID posteriormente; não há recursos de fotos nesta etapa.

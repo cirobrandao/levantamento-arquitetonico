@@ -103,3 +103,7 @@ Já existem IDs estáveis, floorId/parentRoomId, croquis independentes, connecte
 `npm test`: aprovado, oito suítes: geometry, openings, internal-walls, relationships, checklist, persistence, field-ux e stabilization. Os contratos TypeScript dos modelos também são conferidos pela suíte de paredes internas.
 
 Verificação adicional `tsc --noUnusedLocals --noUnusedParameters`: aprovada. Não foram adicionados backend, autenticação, exportações ou recursos da próxima fase.
+
+## Complemento: automação com Vitest
+
+Os 21 testes obrigatórios da especificação foram automatizados em `tests/etapa11/` (Vitest): 20 totalmente automáticos e o de uso no celular com verificação estrutural e roteiro manual (ver `tests/etapa11/README.md`). `npm test` roda as suítes legadas e o Vitest. Problema corrigido nesta revisão: com a introdução das unidades (etapa 12), rótulos em metros perderam o zero final (`4,2 m`); voltaram ao formato `4,20 m`.
