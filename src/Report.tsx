@@ -6,12 +6,12 @@ import { buildRoomGeometry } from './roomGeometry'
 import { roomMetrics, formatMetric } from './metrics'
 import { roomChecklist } from './checklist'
 import { getCorners, validAngle } from './corners'
-import { formatCm, openingNames } from './openings'
+import { doorDescription, formatCm, openingNames } from './openings'
 
 const degrees = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 // Comprimentos na unidade escolhida no projeto (Etapa 12); áreas e volume em m²/m³.
 const lengthFormatter = (project: Project) => (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value) ? formatMeasurement(value, project.measurementUnit ?? 'm') : '—'
-const angleSource = { assumed: 'presumido', informed: 'informado', calculated: 'calculado' } as const
+const angleSource = { assumed: 'presumido', informed: 'manual', calculated: 'automático' } as const
 
 interface Entry { room: Room; path: string; floor: string }
 function entries(project: Project): Entry[] {
@@ -46,7 +46,7 @@ function RoomReport({ entry, project }: { entry: Entry; project: Project }) {
       </div>
     </div>
     {room.diagonals.length > 0 && <table><caption>Diagonais</caption><thead><tr><th>Cantos</th><th>Medida</th></tr></thead><tbody>{room.diagonals.map(diagonal => <tr key={diagonal.id}><td>{diagonal.cornerIds.map(cornerName).join('–')}</td><td>{m(diagonal.lengthM)}</td></tr>)}</tbody></table>}
-    {room.openings.length > 0 && <table><caption>Aberturas</caption><thead><tr><th>ID</th><th>Tipo</th><th>Largura × altura</th><th>Peitoril</th><th>Posição</th></tr></thead><tbody>{room.openings.map(opening => <tr key={opening.id}><td>{opening.label}</td><td>{openingNames[opening.type]}</td><td>{formatCm(opening.widthM)} × {formatCm(opening.heightM)} cm</td><td>{opening.type === 'window' ? `${formatCm(opening.sillHeightM)} cm` : '—'}</td><td>Parede {wallName(opening.wallId)}, {m(opening.offsetM)} do canto {cornerName(opening.referenceCornerId)}</td></tr>)}</tbody></table>}
+    {room.openings.length > 0 && <table><caption>Aberturas</caption><thead><tr><th>ID</th><th>Tipo</th><th>Largura × altura</th><th>Peitoril</th><th>Posição</th><th>Funcionamento</th></tr></thead><tbody>{room.openings.map(opening => <tr key={opening.id}><td>{opening.label}</td><td>{openingNames[opening.type]}</td><td>{formatCm(opening.widthM)} × {formatCm(opening.heightM)} cm</td><td>{opening.type === 'window' ? `${formatCm(opening.sillHeightM)} cm` : '—'}</td><td>Parede {wallName(opening.wallId)}, {m(opening.offsetM)} do canto {cornerName(opening.referenceCornerId)}</td><td>{doorDescription(opening) || '—'}</td></tr>)}</tbody></table>}
     {room.internalWalls.length > 0 && <table><caption>Paredes internas</caption><thead><tr><th>ID</th><th>Comprimento</th><th>Origem</th><th>Orientação</th><th>Observação</th></tr></thead><tbody>{room.internalWalls.map(wall => <tr key={wall.id}><td>{wall.label}</td><td>{m(wall.lengthM)}</td><td>{wall.origin.type === 'perimeter_wall' ? `Parede ${wallName(wall.origin.wallId)}, ${m(wall.origin.distanceM)} do canto ${cornerName(wall.origin.referenceCornerId)}` : '—'}</td><td>{wall.orientationDegrees === null ? '—' : `${degrees.format(wall.orientationDegrees)}°`}</td><td>{wall.note || '—'}</td></tr>)}</tbody></table>}
     {status.issues.length > 0 && <div className="report-issues"><h3>Pendências ({status.issues.length})</h3><ul>{status.issues.map(issue => <li key={issue.id}>{issue.description}{issue.note ? ` — ${issue.note}` : ''}</li>)}</ul></div>}
   </article>

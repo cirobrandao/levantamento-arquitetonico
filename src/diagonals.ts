@@ -38,7 +38,7 @@ export function resolveDiagonalAngles(walls: Wall[], original: Corner[], diagona
       return
     }
     visualCorners[index] = { ...corner, angleDegrees: angle, angleSource: 'calculated' }
-    calculations.push({ cornerId: corner.id, angleDegrees: angle, angleSource: 'calculated', diagonalIds: [diagonal.id] })
+    calculations.push({ cornerId: corner.id, angleDegrees: angle, angleSource: 'calculated', diagonalIds: [diagonal.id], method: 'diagonal' })
     diagnostic.calculatedCornerIds.push(corner.id)
   }
 

@@ -1,8 +1,9 @@
 import RoomObjectSketch from './RoomObjectSketch'
 import { buildObjectPlacements, fitObjectsSketch } from './roomObjects'
 import { useMeasurements } from './Measurement'
-import { useEffect, useId, useMemo, useState } from 'react'
-import type { Room } from './models'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { LabelOffsets, Room } from './models'
+import { DragProvider, Movable, useLabelDrag } from './sketchDrag'
 import { buildPerimeter } from './geometry'
 import { validAngle } from './corners'
 import GeometryStatus from './GeometryStatus'
@@ -14,9 +15,12 @@ import { getSketchLabelLayout } from './sketchLabels'
 import type { RoomGeometry } from './roomGeometry'
 
 const degrees = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
-export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject, variant = 'panel' }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void; variant?: 'panel' | 'report' }) {
+export default function Sketch({ room, survey, focusElementId, selectedObjectId, onSelectObject, variant = 'panel', onLabelOffsetsChange }: { room?: Room; survey?: RoomGeometry; focusElementId?: string; selectedObjectId?: string; onSelectObject?: (id: string) => void; variant?: 'panel' | 'report'; onLabelOffsetsChange?: (offsets: LabelOffsets) => void }) {
   const { unit, format } = useMeasurements()
   const [expanded, setExpanded] = useState(false)
+  const [arrange, setArrange] = useState(false)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const drag = useLabelDrag({ offsets: room?.labelOffsets, onChange: onLabelOffsetsChange, enabled: variant !== 'report' && !!room && !!onLabelOffsetsChange, arrange, svgRef })
   const [selection, setSelection] = useState<{ roomId: string; wallId: string }>()
   useEffect(() => {
     if (room && focusElementId && room.walls.some(wall => wall.id === focusElementId)) setSelection({ roomId: room.id, wallId: focusElementId })
@@ -36,17 +40,22 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
   const selectedWall = room?.walls.find(wall => wall.id === selected)
   return <aside className={variant === 'report' ? 'sketch-panel sketch-report' : `sketch-panel ${expanded ? 'expanded' : ''}`} aria-label="Croqui do ambiente">
     <div className="sketch-heading"><div><span className="eyebrow">VISUALIZAÇÃO</span><h2>Croqui do ambiente</h2></div><button className="expand" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? 'Recolher' : 'Expandir'}</button></div>
-    <div className="sketch-paper"><svg viewBox="0 0 440 340" role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`}>
+    <div className={`sketch-paper ${arrange ? 'is-arranging' : ''}`}><DragProvider api={drag.api}><svg ref={svgRef} viewBox="0 0 440 340" role="group" aria-label={`Croqui de ${room?.name || 'ambiente'}, com ângulos entre paredes`} {...drag.svgHandlers}>
       <defs><pattern id={`${svgId}-grid`} width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#d7ddd4"/></pattern><marker id={`${svgId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#947239"/></marker></defs>
       <rect width="440" height="340" fill={`url(#${svgId}-grid)`}/>
       <text x="20" y="24" className="svg-caption">↻ Perímetro em sentido horário · ângulos internos</text>
+      {room && (geometry.segments.length > 0 || room.ceilingHeightM !== null) && (() => {
+        const text = `Pé-direito ${room.ceilingHeightM === null ? 'não informado' : Number.isFinite(room.ceilingHeightM) ? format(room.ceilingHeightM) : 'inválido'}`
+        const width = text.length * 6.2 + 6
+        return <g className="svg-ceiling" pointerEvents="none"><Movable id="ceiling" box={{ x: 424 - width, y: 12, width, height: 16 }} title="pé-direito"><text x={421} y={24} textAnchor="end">{text}</text></Movable></g>
+      })()}
       {!geometry.segments.length && !objectPlacements.length && <text x="220" y="175" textAnchor="middle" className="svg-empty">{room ? 'Adicione a parede A para começar' : 'Selecione um ambiente'}</text>}
       <RoomObjectSketch placements={objectPlacements} geometry={geometry} selectedId={selectedObjectId} onSelect={objectId => { setSelection(undefined); setExpanded(false); onSelectObject?.(objectId) }}/>
       {objectPlacements.length > 0 && (() => { const origin = geometry.project({ x: 0, y: 0 }); return <g className="object-coordinate-origin" pointerEvents="none"><title>Origem das posições dos objetos: X=0, Y=0, início da primeira parede</title><path d={`M${origin.x-5} ${origin.y}h10M${origin.x} ${origin.y-5}v10`}/></g> })()}
       {geometry.diagonalSegments.map(segment => {
         const start = geometry.project(segment.start), end = geometry.project(segment.end)
-        const { x, y } = labelLayout.positions.get(`diagonal:${segment.diagonal.id}`)!
-        return <g key={segment.diagonal.id} className="svg-diagonal" pointerEvents="none"><title>{`Diagonal medida ${segment.label}: ${format(segment.diagonal.lengthM!)}`}</title><line x1={start.x} y1={start.y} x2={end.x} y2={end.y}/><text x={x} y={y - 6} textAnchor="middle">{segment.label}<tspan x={x} dy="13">{format(segment.diagonal.lengthM!)}</tspan></text></g>
+        const { x, y, box } = labelLayout.positions.get(`diagonal:${segment.diagonal.id}`)!
+        return <g key={segment.diagonal.id} className="svg-diagonal" pointerEvents="none"><title>{`Diagonal medida ${segment.label}: ${format(segment.diagonal.lengthM!)}`}</title><line x1={start.x} y1={start.y} x2={end.x} y2={end.y}/><Movable id={`diagonal:${segment.diagonal.id}`} box={box} title={`diagonal ${segment.label}`}><text x={x} y={y - 6} textAnchor="middle">{segment.label}<tspan x={x} dy="13">{format(segment.diagonal.lengthM!)}</tspan></text></Movable></g>
       })}
       {geometry.allMeasured && !geometry.endpointsMeet && geometry.segments.length >= 3 && (() => {
         const start = geometry.project(geometry.segments[0].start), end = geometry.project(geometry.segments.at(-1)!.end)
@@ -67,8 +76,8 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
             const from = geometry.project(range.start), to = geometry.project(range.end)
             return <line key={rangeIndex} style={{ strokeWidth: segment.wall.thickness != null && Number.isFinite(segment.wall.thickness) && segment.wall.thickness > 0 ? Math.max(2, segment.wall.thickness * geometry.scale) : undefined, strokeLinecap: segment.wall.thickness != null && segment.wall.thickness > 0 ? 'butt' : undefined }} className="wall-stroke" x1={from.x} y1={from.y} x2={to.x} y2={to.y} strokeDasharray={segment.measured ? undefined : '6 5'}/>
           })}
-          <text className="wall-label" x={label.x} y={label.y - 6} textAnchor="middle"><tspan x={label.x}>{segment.wall.label}</tspan><tspan x={label.x} dy="16" className="wall-length">{segment.wall.lengthM === null ? 'Sem medida' : Number.isFinite(segment.wall.lengthM) ? `${format(segment.wall.lengthM)}` : 'Medida inválida'}</tspan></text>
-          {index === 0 && <g className="entry-indicator"><line x1={middle.x - dy * 48} y1={middle.y + dx * 48} x2={middle.x - dy * 9} y2={middle.y + dx * 9} stroke="#947239" strokeWidth="2" markerEnd={`url(#${svgId}-arrow)`}/><text x={entry.x} y={entry.y} textAnchor="middle">Entrada principal · {segment.wall.label}</text></g>}
+          <Movable id={`wall:${segment.wall.id}`} box={label.box} title={`medida da parede ${segment.wall.label}`}><text className="wall-label" x={label.x} y={label.y - 6} textAnchor="middle"><tspan x={label.x}>{segment.wall.label}</tspan><tspan x={label.x} dy="16" className="wall-length">{segment.wall.lengthM === null ? 'Sem medida' : Number.isFinite(segment.wall.lengthM) ? `${format(segment.wall.lengthM)}` : 'Medida inválida'}</tspan></text></Movable>
+          {index === 0 && <g className="entry-indicator"><line x1={middle.x - dy * 48} y1={middle.y + dx * 48} x2={middle.x - dy * 9} y2={middle.y + dx * 9} stroke="#947239" strokeWidth="2" markerEnd={`url(#${svgId}-arrow)`}/><Movable id="entry" box={entry.box} title="entrada principal"><text x={entry.x} y={entry.y} textAnchor="middle">Entrada principal · {segment.wall.label}</text></Movable></g>}
         </g>
       })}
       <InternalWallSketch labels={internalWallLabels} geometry={geometry}/>
@@ -81,16 +90,22 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
         const arcStart = { x: position.x + Math.cos(startHeading) * 13, y: position.y + Math.sin(startHeading) * 13 }
         const arcEnd = { x: position.x + Math.cos(endHeading) * 13, y: position.y + Math.sin(endHeading) * 13 }
         const defined = validAngle(corner.angleDegrees)
-        const source = !defined ? 'não definido' : corner.angleSource === 'assumed' ? 'presumido' : corner.angleSource === 'calculated' ? 'calculado' : 'informado'
+        const source = !defined ? (room?.corners.find(item => item.id === corner.id)?.angleSource === 'calculated' ? 'auto · faltam dados' : 'não definido') : corner.angleSource === 'assumed' ? 'presumido' : corner.angleSource === 'calculated' ? 'auto' : 'manual'
         return <g key={corner.id} className="svg-corner" pointerEvents="none">
           <title>{`Canto ${corner.label}: ${defined ? `${corner.angleDegrees}°` : 'ainda não definido'} — ${source}${corner.closing && !geometry.endpointsMeet ? ', encontro final ainda separado do início' : ''}`}</title>
           <circle cx={position.x} cy={position.y} r="4"/>
           <path className="angle-arc" d={`M${arcStart.x} ${arcStart.y} A13 13 0 ${corner.visualAngle > 180 ? 1 : 0} 0 ${arcEnd.x} ${arcEnd.y}`} strokeDasharray={!defined || (corner.closing && !geometry.endpointsMeet) ? '3 3' : undefined}/>
-          <text x={cornerLabel.x} y={cornerLabel.y} textAnchor="middle">{corner.label}</text>
-          <text x={label.x} y={label.y} textAnchor="middle" className="corner-angle"><tspan x={label.x}>{defined ? `${corner.angleSource === 'calculated' ? '≈ ' : ''}${degrees.format(corner.angleDegrees!)}°` : '?'}</tspan><tspan x={label.x} dy="12" className="angle-source">{source}</tspan></text>
+          <Movable id={`corner:${corner.id}`} box={cornerLabel.box} title={`canto ${corner.label}`}><text x={cornerLabel.x} y={cornerLabel.y} textAnchor="middle">{corner.label}</text></Movable>
+          <Movable id={`angle:${corner.id}`} box={label.box} title={`ângulo ${corner.label}`}><text x={label.x} y={label.y} textAnchor="middle" className="corner-angle"><tspan x={label.x}>{defined ? `${corner.angleSource === 'calculated' ? '≈ ' : ''}${degrees.format(corner.angleDegrees!)}°` : '?'}</tspan><tspan x={label.x} dy="12" className="angle-source">{source}</tspan></text></Movable>
         </g>
       })}
-    </svg></div>
+    </svg></DragProvider></div>
+    {drag.api.enabled && <div className="label-tools">
+      <button className={`label-arrange ${arrange ? 'is-on' : ''}`} aria-pressed={arrange} onClick={() => { setArrange(value => !value); drag.setActive(undefined) }}>✥ {arrange ? 'Concluir ajuste' : 'Ajustar rótulos'}</button>
+      {drag.active && drag.offsets[drag.active] && <button onClick={() => { drag.reset(drag.active); drag.setActive(undefined) }}>↺ Restaurar {labelName(drag.active, room!, geometry)}</button>}
+      {Object.keys(drag.offsets).length > 0 && <button onClick={() => { if (window.confirm('Voltar todos os rótulos deste croqui para a posição automática?')) { drag.reset(); drag.setActive(undefined) } }}>↺ Restaurar todos ({Object.keys(drag.offsets).length})</button>}
+      <span className="label-hint">{arrange ? 'Arraste os rótulos com o dedo ou o mouse. Setas do teclado também movem; Delete restaura.' : 'Com o mouse, arraste qualquer rótulo. No celular, toque em “Ajustar rótulos”.'}</span>
+    </div>}
     <div className="sketch-note" role="status"><span className="status-dot"/>{selectedObject ? `${selectedObject.displayId} — ${selectedObject.name} selecionado` : selectedWall ? `Parede ${selectedWall.label} selecionada` : 'Clique em uma parede ou objeto para selecionar'}</div>
     <div className="geometry-notes">
       <p>Entrada principal indicada na primeira parede{room?.walls[0] ? ` (${room.walls[0].label})` : ''}. Aberturas: largura × altura e peitoril em {unit}. A distância parte do canto identificado até a borda mais próxima.</p>
@@ -99,4 +114,16 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
       <GeometryStatus geometry={geometry}/>
     </div>
   </aside>
+}
+
+function labelName(key: string, room: Room, geometry: ReturnType<typeof buildPerimeter>) {
+  const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
+  if (key === 'ceiling') return 'pé-direito'
+  if (key === 'entry') return 'entrada principal'
+  if (kind === 'wall') return `medida ${room.walls.find(wall => wall.id === id)?.label ?? ''}`.trim()
+  if (kind === 'opening') return room.openings.find(item => item.id === id)?.label ?? 'abertura'
+  if (kind === 'internal') return room.internalWalls.find(item => item.id === id)?.label ?? 'parede interna'
+  if (kind === 'angle' || kind === 'corner') return `${kind === 'angle' ? 'ângulo' : 'canto'} ${geometry.corners.find(corner => corner.id === id)?.label ?? ''}`.trim()
+  if (kind === 'diagonal') return 'diagonal'
+  return 'rótulo'
 }

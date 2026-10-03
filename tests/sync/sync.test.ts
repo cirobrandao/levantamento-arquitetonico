@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { HttpError, ProjectLedger, RemoteSync, mergeByProject } from '../../src/sync'
 import type { ProjectMeta, RemoteState, SyncStatus, SyncTransport } from '../../src/sync'
-import { createSnapshot } from '../../src/storage'
+import { SCHEMA_VERSION, createSnapshot } from '../../src/storage'
 import type { StoredWorkspace, WorkspaceData } from '../../src/storage'
 import type { Project } from '../../src/models'
 
@@ -123,4 +123,4 @@ describe('envio em segundo plano', () => {
   })
 })
 
-it('createSnapshot continua válido para o envio', () => { expect(createSnapshot(ws(project('x'))).schemaVersion).toBe(3) })
+it('createSnapshot continua válido para o envio', () => { expect(createSnapshot(ws(project('x'))).schemaVersion).toBe(SCHEMA_VERSION) })

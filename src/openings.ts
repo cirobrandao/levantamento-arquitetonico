@@ -84,6 +84,15 @@ function intersects(a: LabelBox, b: LabelBox) {
 }
 export function placeOpeningLabels(placements: OpeningPlacement[], project: (point: Point) => Point, reserved: LabelBox[], unit: MeasurementUnit = 'cm') {
   const occupied = [...reserved]
+  // O giro das portas também ocupa espaço: evita rótulos em cima do arco.
+  placements.forEach(placement => {
+    const drawing = doorDrawing(placement.opening, project(placement.start), project(placement.end), placement.direction)
+    if (drawing?.kind !== 'hinged') return
+    const [hinge, open] = drawing.leaf, other = placement.opening.hinge === 'right' ? project(placement.start) : project(placement.end)
+    const corner = { x: other.x + open.x - hinge.x, y: other.y + open.y - hinge.y }
+    const xs = [hinge.x, open.x, other.x, corner.x], ys = [hinge.y, open.y, other.y, corner.y]
+    occupied.push({ x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) })
+  })
   return placements.map(placement => {
     const start = project(placement.start), end = project(placement.end)
     const anchor = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
@@ -97,11 +106,51 @@ export function placeOpeningLabels(placements: OpeningPlacement[], project: (poi
       const x = Math.max(width / 2 + 8, Math.min(432 - width / 2, anchor.x + normal.x * distance + placement.direction.x * shift))
       const y = Math.max(56, Math.min(330 - height, anchor.y + normal.y * distance + placement.direction.y * shift - 6))
       const box = { x: x - width / 2, y: y - 11, width, height }
-      return { x, y, box, anchor, collisions: occupied.filter(other => intersects(box, other)).length, distance: Math.hypot(x - anchor.x, y - anchor.y) }
+      // Área sobreposta (com folga de 4) pesa mais que a quantidade: evita cobrir medidas de parede.
+      const overlap = occupied.reduce((sum, other) => intersects(box, other) ? sum + (Math.min(box.x + box.width, other.x + other.width) - Math.max(box.x, other.x) + 4) * (Math.min(box.y + box.height, other.y + other.height) - Math.max(box.y, other.y) + 4) : sum, 0)
+      return { x, y, box, anchor, collisions: occupied.filter(other => intersects(box, other)).length, overlap: Math.max(0, overlap), distance: Math.hypot(x - anchor.x, y - anchor.y) }
     }))
-    candidates.sort((a, b) => a.collisions - b.collisions || a.distance - b.distance)
+    candidates.sort((a, b) => a.overlap - b.overlap || a.collisions - b.collisions || a.distance - b.distance)
     const chosen = candidates[0]
     occupied.push(chosen.box)
     return { placement, ...chosen }
   })
+}
+
+// Funcionamento da porta (texto). Esquerda/direita: vistas de dentro do ambiente, olhando para a parede.
+export const doorKindNames = { hinged: 'De abrir', sliding: 'De correr' } as const
+export function doorDescription(opening: Opening): string {
+  if (opening.type !== 'door') return ''
+  const side = (value?: string) => value === 'left' ? 'à esquerda' : value === 'right' ? 'à direita' : ''
+  if (opening.doorKind === 'sliding') return ['Porta de correr', opening.slideDirection ? `corre para a ${opening.slideDirection === 'left' ? 'esquerda' : 'direita'}` : 'lado de deslize não informado', opening.swing ? `folha pelo lado de ${opening.swing === 'outward' ? 'fora' : 'dentro'}` : ''].filter(Boolean).join(', ')
+  const parts = ['Porta de abrir', opening.swing ? `abre para ${opening.swing === 'outward' ? 'fora' : 'dentro'} do ambiente` : 'sentido não informado', opening.hinge ? `dobradiça ${side(opening.hinge)}` : 'dobradiça não informada']
+  return parts.join(', ')
+}
+
+// Desenho da porta no croqui (coordenadas já projetadas). A normal interna do perímetro horário é (-d.y, d.x).
+// Esquerda = início da parede (fromM), direita = fim, vistos de dentro do ambiente.
+export interface DoorDrawing { kind: 'hinged' | 'sliding'; specified: boolean; leaf: [Point, Point]; arc?: string; track?: [Point, Point]; arrow?: string }
+export function doorDrawing(opening: Opening, start: Point, end: Point, direction: Point): DoorDrawing | null {
+  if (opening.type !== 'door') return null
+  const width = Math.hypot(end.x - start.x, end.y - start.y)
+  if (!(width > 0)) return null
+  const side = opening.swing === 'outward' ? -1 : 1
+  const normal = { x: -direction.y * side, y: direction.x * side }
+  if (opening.doorKind === 'sliding') {
+    const gap = 3.5
+    const shift = (p: Point) => ({ x: p.x + normal.x * gap, y: p.y + normal.y * gap })
+    const toward = opening.slideDirection === 'right' ? 1 : -1
+    const jamb = toward === 1 ? end : start
+    const parked = { x: jamb.x + direction.x * toward * width, y: jamb.y + direction.y * toward * width }
+    const middle = shift({ x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 })
+    const len = Math.min(width * 0.35, 18), tip = { x: middle.x + direction.x * toward * len, y: middle.y + direction.y * toward * len }
+    const back = (s: number) => ({ x: tip.x - direction.x * toward * 4 + normal.x * s, y: tip.y - direction.y * toward * 4 + normal.y * s })
+    const a = back(3), b = back(-3)
+    return { kind: 'sliding', specified: !!opening.slideDirection, leaf: [shift(start), shift(end)], track: [shift(jamb), shift(parked)], arrow: `M${middle.x} ${middle.y}L${tip.x} ${tip.y}M${a.x} ${a.y}L${tip.x} ${tip.y}L${b.x} ${b.y}` }
+  }
+  const hinge = opening.hinge === 'right' ? end : start
+  const other = opening.hinge === 'right' ? start : end
+  const open = { x: hinge.x + normal.x * width, y: hinge.y + normal.y * width }
+  const cross = (other.x - hinge.x) * (open.y - hinge.y) - (other.y - hinge.y) * (open.x - hinge.x)
+  return { kind: 'hinged', specified: !!opening.swing && !!opening.hinge, leaf: [hinge, open], arc: `M${other.x} ${other.y}A${width} ${width} 0 0 ${cross > 0 ? 1 : 0} ${open.x} ${open.y}` }
 }

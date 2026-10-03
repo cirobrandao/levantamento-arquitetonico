@@ -15,7 +15,7 @@ function moduleUrl(name) {
   const url = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
   cache.set(name, url); return url
 }
-const { parseMeasurement, formatMeasurement, toDisplay, toCanonical } = await import(moduleUrl('units'))
+const { parseMeasurement, formatMeasurement, toDisplay, toCanonical, displayMeasurementInput } = await import(moduleUrl('units'))
 const { ensureProjectMetadata, roomDisplayId } = await import(moduleUrl('projectMetadata'))
 const { createRoom } = await import(moduleUrl('domain'))
 const { readSnapshot, createSnapshot, encodeSnapshot, decodeSnapshot, SCHEMA_VERSION } = await import(moduleUrl('storage'))
@@ -80,9 +80,15 @@ for (const unit of ['mm', 'cm', 'm', 'mm', 'm']) {
   assert.ok(svg.includes(formatMeasurement(.32, unit)))
   assert.ok(svg.includes('stroke-width:'))
   const editor = renderToStaticMarkup(React.createElement(UnitContext, { value: unit }, React.createElement(RoomEditor, { room: restoredRoom, survey, project: changed, relatedRooms: [], onChange() {}, onNavigate() {} })))
-  assert.ok(editor.includes(`value="${toDisplay(3.75, unit)}"`))
+  // Campos fora de edição mostram o padrão brasileiro (3,75 m · 375 cm · 3750 mm), sem alterar o valor salvo.
+  assert.ok(editor.includes(`value="${displayMeasurementInput(3.75, unit)}"`))
+  assert.equal(parseMeasurement(displayMeasurementInput(3.75, unit), unit), 3.75)
   assert.ok(editor.includes('Painel acústico'))
   assert.deepEqual(survey.perimeter.segments, geometryBefore)
 }
 assert.throws(() => readSnapshot({ ...migrated, data: { ...migrated.data, projects: [{ ...restored, measurementUnit: 'km' }] } }), /inválida/)
 console.log('Etapa 12: conversão/parsing, unidades em formulários/SVG, medidas originais, migração, persistência, espessura/tipo e IDs estáveis sem reutilização OK.')
+assert.equal(displayMeasurementInput(2.8, 'm'), '2,80')
+assert.equal(displayMeasurementInput(2.8, 'mm'), '2800')
+assert.equal(displayMeasurementInput(2.8123456789, 'm'), '2,8123456789')
+assert.equal(displayMeasurementInput(null, 'm'), '')

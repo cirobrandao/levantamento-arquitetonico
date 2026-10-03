@@ -1,11 +1,14 @@
 import { useMeasurements } from './Measurement'
 import type { buildPerimeter } from './geometry'
 import type { placeInternalWallLabels } from './internalWalls'
+import { Movable, useOffsetLookup } from './sketchDrag'
 
 
 export default function InternalWallSketch({ labels, geometry }: { labels: ReturnType<typeof placeInternalWallLabels>; geometry: ReturnType<typeof buildPerimeter> }) {
   const { format } = useMeasurements()
-  return <g className="svg-internal-walls" pointerEvents="none">{labels.map(({ placement, x, y, middle }) => {
+  const offsetOf = useOffsetLookup()
+  return <g className="svg-internal-walls" pointerEvents="none">{labels.map(({ placement, x, y, middle, box }) => {
+    const offset = offsetOf(`internal:${placement.internalWall.id}`)
     const start = geometry.project(placement.start), end = geometry.project(placement.end)
     const wall = placement.internalWall
     const thickness = wall.thicknessM != null && Number.isFinite(wall.thicknessM) && wall.thicknessM > 0 ? Math.max(2, wall.thicknessM * geometry.scale) : 3
@@ -13,8 +16,8 @@ export default function InternalWallSketch({ labels, geometry }: { labels: Retur
       <title>{`${wall.label} · Origem: Parede ${placement.wall.label} · Canto ${placement.reference.label} · ${wall.orientationDegrees}°${wall.note ? ` · ${wall.note}` : ''}`}</title>
       <line className="internal-wall-line" x1={start.x} y1={start.y} x2={end.x} y2={end.y} strokeWidth={thickness}/>
       <circle className="internal-wall-origin" cx={start.x} cy={start.y} r="3"/>
-      <line className="internal-wall-leader" x1={middle.x} y1={middle.y} x2={x} y2={y + 4}/>
-      <text className="internal-wall-label" x={x} y={y} textAnchor="middle"><tspan x={x}>{wall.label}</tspan><tspan x={x} dy="14" className="internal-wall-length">{format(wall.lengthM!)}</tspan></text>
+      <line className="internal-wall-leader" x1={middle.x} y1={middle.y} x2={x + offset.dx} y2={y + 4 + offset.dy}/>
+      <Movable id={`internal:${wall.id}`} box={box} title={wall.label}><text className="internal-wall-label" x={x} y={y} textAnchor="middle"><tspan x={x}>{wall.label}</tspan><tspan x={x} dy="14" className="internal-wall-length">{format(wall.lengthM!)}</tspan></text></Movable>
     </g>
   })}</g>
 }

@@ -2,11 +2,26 @@ import type { Corner, Diagonal, Wall } from './models'
 import { getCorners, validAngle } from './corners'
 import { resolveDiagonalAngles } from './diagonals'
 import { closureSeverity, geometryTolerance } from './tolerances'
+import { solveClosureAngles } from './angles'
+export interface AutoAngleNote { cornerId: string; message: string }
 export interface Point { x: number; y: number }
 export function buildPerimeter(walls: Wall[], savedCorners: Corner[] = [], diagonals: Diagonal[] = []) {
   const originalCorners = getCorners(walls, savedCorners)
   const resolved = resolveDiagonalAngles(walls, originalCorners, diagonals)
-  const encounters = resolved.visualCorners
+  const encounters = resolved.visualCorners.map(corner => ({ ...corner }))
+  const calculations = [...resolved.calculations]
+  // Encontros em modo automático que as diagonais não resolveram:
+  // tenta o fechamento do perímetro. Ângulos informados nunca são substituídos.
+  const autoNotes: AutoAngleNote[] = []
+  const targets = originalCorners.map((corner, index) => ({ corner, index })).filter(({ corner }) => corner.angleSource === 'calculated' && !calculations.some(item => item.cornerId === corner.id)).map(({ index }) => index)
+  if (targets.length && walls.length >= 3) {
+    const solution = solveClosureAngles(walls, encounters.map((corner, index) => targets.includes(index) ? null : corner.angleDegrees), targets)
+    if (solution.ok) solution.angles.forEach((angle, index) => {
+      encounters[index] = { ...encounters[index], angleDegrees: angle, angleSource: 'calculated' }
+      calculations.push({ cornerId: encounters[index].id, angleDegrees: angle, angleSource: 'calculated', diagonalIds: [], method: 'closure' })
+    })
+    else targets.forEach(index => autoNotes.push({ cornerId: originalCorners[index].id, message: solution.reason }))
+  } else if (targets.length) targets.forEach(index => autoNotes.push({ cornerId: originalCorners[index].id, message: 'Cadastre pelo menos 3 paredes para calcular ângulos.' }))
   let heading = 0
   let cursor: Point = { x: 0, y: 0 }
   const segments = walls.map((wall, index) => {
@@ -60,7 +75,7 @@ export function buildPerimeter(walls: Wall[], savedCorners: Corner[] = [], diago
     if (segment && allMeasured && segment.differenceM > geometryTolerance.diagonalDifferenceWarningM) messages.push('A diagonal medida difere da distância no croqui. Verifique as medidas informadas.')
     return { ...diagnostic, messages, differenceM: segment?.differenceM ?? null }
   })
-  return { segments, corners, scale, project, closed, endpointsMeet, closureM, allMeasured, allAnglesDefined, orientationMismatch, calculations: resolved.calculations, diagonalSegments, diagonalChecks, closureSeverity: closureSeverity(closureM) }
+  return { segments, corners, scale, project, closed, endpointsMeet, closureM, allMeasured, allAnglesDefined, orientationMismatch, calculations, autoNotes, diagonalSegments, diagonalChecks, closureSeverity: closureSeverity(closureM) }
 }
 
 function headingAt(direction: Point) { return Math.atan2(direction.y, direction.x) }

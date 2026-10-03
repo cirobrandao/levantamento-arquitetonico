@@ -5,9 +5,15 @@ export interface Wall { id: string; label: string; lengthM: number | null; thick
 export type AngleSource = 'assumed' | 'informed' | 'calculated'
 export interface Corner { id: string; wallIds: [string, string]; angleDegrees: number | null; angleSource: AngleSource | null }
 export interface Diagonal { id: string; cornerIds: [string, string]; lengthM: number | null; source: 'measured' }
-export interface AngleCalculation { cornerId: string; angleDegrees: number; angleSource: 'calculated'; diagonalIds: string[] }
+// method: 'diagonal' (lei dos cossenos/diagonais) ou 'closure' (fechamento do perímetro com as paredes medidas).
+export interface AngleCalculation { cornerId: string; angleDegrees: number; angleSource: 'calculated'; diagonalIds: string[]; method?: 'diagonal' | 'closure' }
 export type OpeningType = 'door' | 'window' | 'gap'
-export interface Opening { id: string; label: string; wallId: string; type: OpeningType; referenceCornerId: string; offsetM: number | null; widthM: number | null; heightM: number | null; sillHeightM: number | null; connectedRoomId?: string; connectedOpeningId?: string }
+// Portas: doorKind 'hinged' (de abrir, com giro) ou 'sliding' (de correr).
+// swing: para dentro/fora do ambiente. hinge/slideDirection: esquerda/direita vistas de dentro do ambiente, olhando para a parede.
+export type DoorKind = 'hinged' | 'sliding'
+export type DoorSwing = 'inward' | 'outward'
+export type DoorSide = 'left' | 'right'
+export interface Opening { id: string; label: string; wallId: string; type: OpeningType; referenceCornerId: string; offsetM: number | null; widthM: number | null; heightM: number | null; sillHeightM: number | null; connectedRoomId?: string; connectedOpeningId?: string; doorKind?: DoorKind; swing?: DoorSwing; hinge?: DoorSide; slideDirection?: DoorSide }
 export type InternalWallOrigin =
   | { type: 'perimeter_wall'; wallId: string; referenceCornerId: string; distanceM: number | null }
   | { type: 'internal_wall'; internalWallId: string; referenceEndpoint: 'start' | 'end'; distanceM: number | null }
@@ -39,6 +45,8 @@ export interface Photo {
   linkedEntityType?: PhotoEntityType; linkedEntityId?: string;
   tags: string[]; note?: string; fileId: string; mimeType: string; size: number
 }
-export interface Room { id: string; displayId?: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; objects?: RoomObject[]; objectCounter?: number; photos?: Photo[]; pendingItems: PendingItem[]; subrooms: Room[] }
+export interface Room { id: string; displayId?: string; name: string; floorId: string; parentRoomId?: string; ceilingHeightM: number | null; walls: Wall[]; corners: Corner[]; diagonals: Diagonal[]; openings: Opening[]; openingCounters: Record<OpeningType, number>; internalWalls: InternalWall[]; internalWallCounter: number; objects?: RoomObject[]; objectCounter?: number; photos?: Photo[]; pendingItems: PendingItem[]; subrooms: Room[]; labelOffsets?: LabelOffsets }
+// Deslocamento manual dos rótulos do croqui (unidades do desenho), por chave estável: wall:<id>, angle:<id>, opening:<id>...
+export type LabelOffsets = Record<string, { dx: number; dy: number }>
 export interface Floor { id: string; name: string; rooms: Room[] }
 export interface Project { id: string; name: string; measurementUnit?: import('./units').MeasurementUnit; roomDisplayCounter?: number; floors: Floor[]; relationships: RoomRelationship[] }

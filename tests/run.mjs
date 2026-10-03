@@ -5,4 +5,4 @@ for (const name of ['geometry', 'openings', 'internal-walls', 'relationships', '
   if (result.error) { console.error(result.error); process.exit(1) }
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
-console.log('13 suítes aprovadas.')
+console.log('14 suítes aprovadas.')

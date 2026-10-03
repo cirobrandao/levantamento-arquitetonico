@@ -3,7 +3,7 @@ import { MeasurementInput, useMeasurements } from './Measurement'
 import { ManualMarkers } from './ChecklistPanel'
 import type { Opening, OpeningType, Room } from './models'
 import { id } from './domain'
-import { getWallReferences, openingLabel, openingNames } from './openings'
+import { doorDescription, getWallReferences, openingLabel, openingNames } from './openings'
 import type { OpeningCheck } from './openings'
 import { OpeningConnection } from './RoomConnections'
 import type { RoomOption } from './RoomConnections'
@@ -15,7 +15,7 @@ export default function OpeningEditor({ room, onChange, checks, relatedRooms = [
     const wall = room.walls[0]
     const reference = getWallReferences(room.walls, room.corners, wall.id)[0]
     const sequence = room.openingCounters[type] + 1
-    const opening: Opening = { id: id(), label: openingLabel(type, sequence), type, wallId: wall.id, referenceCornerId: reference.id, offsetM: null, widthM: null, heightM: null, sillHeightM: null }
+    const opening: Opening = { id: id(), label: openingLabel(type, sequence), type, wallId: wall.id, referenceCornerId: reference.id, offsetM: null, widthM: null, heightM: null, sillHeightM: null, ...(type === 'door' ? { doorKind: 'hinged' as const } : {}) }
     onChange({ ...room, openings: [...room.openings, opening], openingCounters: { ...room.openingCounters, [type]: sequence } })
   }
   return <section className="opening-editor" aria-label="Aberturas nas paredes">
@@ -38,8 +38,19 @@ export default function OpeningEditor({ room, onChange, checks, relatedRooms = [
           {field('widthM', `Largura (${unit})`)}{field('heightM', `Altura (${unit})`)}
           {opening.type === 'window' && field('sillHeightM', `Peitoril (${unit})`)}
           <div className="opening-offset">{field('offsetM', `Distância do canto até a borda da abertura (${unit})`)}</div>
+          {opening.type === 'door' && <fieldset className="door-operation">
+            <legend>Funcionamento da porta <span>(esquerda/direita vistas de dentro do ambiente, olhando para a parede)</span></legend>
+            <label>Tipo de porta<select value={opening.doorKind ?? 'hinged'} onChange={event => update({ doorKind: event.target.value === 'sliding' ? 'sliding' : 'hinged' })}><option value="hinged">De abrir (com giro)</option><option value="sliding">De correr</option></select></label>
+            {(opening.doorKind ?? 'hinged') === 'hinged' ? <>
+              <label>Abre para<select value={opening.swing ?? ''} onChange={event => update({ swing: event.target.value === 'inward' || event.target.value === 'outward' ? event.target.value : undefined })}><option value="">Não informado</option><option value="inward">Dentro do ambiente</option><option value="outward">Fora do ambiente</option></select></label>
+              <label>Dobradiça<select value={opening.hinge ?? ''} onChange={event => update({ hinge: event.target.value === 'left' || event.target.value === 'right' ? event.target.value : undefined })}><option value="">Não informado</option><option value="left">À esquerda</option><option value="right">À direita</option></select></label>
+            </> : <>
+              <label>Corre para<select value={opening.slideDirection ?? ''} onChange={event => update({ slideDirection: event.target.value === 'left' || event.target.value === 'right' ? event.target.value : undefined })}><option value="">Não informado</option><option value="left">Para a esquerda</option><option value="right">Para a direita</option></select></label>
+              <label>Folha pelo lado<select value={opening.swing ?? ''} onChange={event => update({ swing: event.target.value === 'inward' || event.target.value === 'outward' ? event.target.value : undefined })}><option value="">Não informado</option><option value="inward">De dentro do ambiente</option><option value="outward">De fora do ambiente</option></select></label>
+            </>}
+          </fieldset>}
         </div>
-        <p className="opening-summary">{opening.label} · Parede {wall?.label ?? '?'} · {format(opening.widthM, false)} × {format(opening.heightM)}{opening.type === 'window' ? ` · P=${format(opening.sillHeightM)}` : ''}<br/>{format(opening.offsetM)} do canto {reference?.label ?? '?'} até a borda mais próxima.</p>
+        <p className="opening-summary">{opening.label} · Parede {wall?.label ?? '?'} · {format(opening.widthM, false)} × {format(opening.heightM)}{opening.type === 'window' ? ` · P=${format(opening.sillHeightM)}` : ''}<br/>{format(opening.offsetM)} do canto {reference?.label ?? '?'} até a borda mais próxima.{opening.type === 'door' && <><br/>{doorDescription(opening)}.</>}</p>
         {opening.type !== 'window' && <OpeningConnection opening={opening} rooms={relatedRooms} onChange={update}/>}
         {check && check.messages.length > 0 && <div className="opening-feedback" aria-live="polite">{check.messages.map(message => <p key={message}>{message}</p>)}</div>}
       </section>

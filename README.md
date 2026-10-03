@@ -39,6 +39,13 @@ Excluir uma foto exige confirmação; seus Blobs são removidos na mesma transa�
 
 Verificação: `npm test` executa onze suítes. `tests/photos.mjs` cobre busca e filtros, renomeação, desvinculação, preservação de medidas, migração de schemas/banco, Blobs separados, reabertura e exclusão de arquivos. `fake-indexeddb` é utilizado apenas nos testes. A interface foi verificada em largura mobile pela rede local, com botões de captura grandes e mini croqui persistente; a câmera física precisa ser validada no celular. Não há backup/exportação nesta etapa.
 
+## Croqui: rótulos realocáveis, ângulos automáticos e portas (nerv)
+
+- **Rótulos realocáveis**: com o mouse, arraste qualquer rótulo do croqui (medidas das paredes, J01/P01, PI01, ângulos, cantos, diagonais, entrada e pé-direito). No celular, toque em **Ajustar rótulos** e arraste com o dedo (setas do teclado também movem; Delete restaura). A posição fica salva por item em `room.labelOffsets` (deslocamento sobre a posição automática), entra no IndexedDB, no backup JSON e na sincronização. **Restaurar** volta um rótulo; **Restaurar todos** volta o croqui inteiro. O posicionamento automático também passou a evitar sobreposição por área (ex.: J01 sobre a medida da parede C).
+- **Pé-direito**: aparece no croqui ("Pé-direito 2,80 m"); os campos de medida mostram o padrão brasileiro fora de edição ("2,80"), sem alterar o valor salvo.
+- **Encontros entre paredes**: modo **Automático (pela geometria)** — calcula o ângulo pelas diagonais (lei dos cossenos) e, com todas as paredes medidas, pelo fechamento do perímetro (até 3 encontros desconhecidos). Selos **auto** / **manual**; "Sobrescrever manualmente" e "Voltar ao automático". Quando faltam dados, o app diz o quê (comprimento ausente, encontros demais, solução dupla, medidas que não fecham). Ângulos manuais nunca são substituídos.
+- **Portas**: tipo *de abrir* (abre para dentro/fora do ambiente, dobradiça à esquerda/direita) ou *de correr* (corre para a esquerda/direita, folha pelo lado de dentro/fora). Esquerda/direita são vistas de dentro do ambiente, olhando para a parede. O croqui desenha o giro com raio igual à largura no lado escolhido, ou a folha de correr com trilho e seta; o relatório e o CSV trazem o funcionamento. Campos não informados aparecem em cinza.
+
 ## Servidor opcional: login e sincronização entre aparelhos
 
 A aplicação continua estática e local por padrão. Para usar login, papéis de administrador e usuário, e sincronizar os levantamentos entre aparelhos via PostgreSQL, veja [server/README.md](server/README.md). O servidor entrega o mesmo `dist/` e ativa a sincronização somente nas páginas servidas por ele.
