@@ -21,6 +21,7 @@ import type { RoomGeometry } from './roomGeometry'
 import RoomSummary from './RoomSummary'
 import { roomMetrics } from './metrics'
 import { roomChecklist } from './checklist'
+import { readSyncConfig } from './sync'
 export default function RoomEditor({ room, survey, onChange, relatedRooms, project, onNavigate, focusIssue, selectedObjectId, onSelectObject }: { room: Room; survey: RoomGeometry; onChange: (room: Room) => void; relatedRooms: RoomOption[]; project: Project; onNavigate: (issue: ChecklistIssue) => void; focusIssue?: ChecklistIssue; selectedObjectId?: string; onSelectObject?: (id: string) => void }) {
   const { unit } = useMeasurements()
   const editorRef = useRef<HTMLElement>(null)
@@ -70,6 +71,6 @@ export default function RoomEditor({ room, survey, onChange, relatedRooms, proje
     <RoomSummary metrics={metrics}/>
     <RoomChecklistPanel room={room} survey={survey} project={project} onChange={onChange} onNavigate={onNavigate}/><div className="mobile-geometry-status"><GeometryStatus geometry={geometry}/></div>
     <p className="sr-only" role="status">{message}</p>
-    <p className="memory-note">Salvamento automático neste navegador e dispositivo. Aguarde a indicação “Salvo” antes de encerrar.</p>
+    <p className="memory-note">{readSyncConfig() ? 'Salvamento automático neste aparelho e sincronização com o servidor; funciona também sem conexão.' : 'Salvamento automático neste navegador e dispositivo. Aguarde a indicação “Salvo” antes de encerrar.'}</p>
   </section>
 }

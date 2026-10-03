@@ -126,3 +126,18 @@
   .app-shell{display:block!important;min-height:0}.report-main{padding:0}.report-room{border:0;border-top:1px solid #ccc;border-radius:0;padding:12px 0;margin:0;break-before:page}
   .report-grid{grid-template-columns:1fr 1fr}.sketch-report{border:1px solid #ddd}.report table{font-size:10.5px}.report-cover{break-after:avoid}
 }
+
+/* Sincronização opcional */
+.save-indicator{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.sync-status{font-size:12px;color:#c0d0c5}.sync-synced{color:#bfe3c8}.sync-pending{color:#e9c98f}
+.sync-login{color:#fff;font-size:12px}
+@media(max-width:800px){.sync-status{font-size:11px;max-width:52vw;text-align:right}}
+/* Menu da conta (servidor com login) */
+.app-header{gap:16px}.app-header .save-indicator{margin-left:auto}
+.user-menu{display:flex;align-items:center;gap:14px;font-size:13px;color:#c0d0c5}.user-menu a{color:#d6e2d9}.user-menu form{margin:0}
+.user-menu button{background:transparent;color:#d6e2d9;border:1px solid #537167;padding:6px 10px;font-size:12px}.user-menu button:hover{background:#21493f}
+@media(max-width:800px){.app-header{height:auto;min-height:64px;flex-wrap:wrap;padding:10px 18px;row-gap:6px}.user-menu{width:100%;justify-content:flex-end;gap:12px;font-size:12px}.user-name{margin-right:auto}}
+
+.server-history{margin:6px 0 10px;font-size:12px}.server-history summary{cursor:pointer;font-weight:600;color:#34564b;min-height:36px;display:flex;align-items:center}
+.server-history ul{list-style:none;padding:0;margin:6px 0;display:grid;gap:6px}.server-history li{display:flex;justify-content:space-between;align-items:center;gap:8px}.server-history li button{padding:6px 10px;font-size:11px}
+
+@media(max-width:800px){.user-name{display:none}.user-menu{gap:10px}.user-menu button{padding:6px 8px}.app-header .save-indicator{gap:8px}}

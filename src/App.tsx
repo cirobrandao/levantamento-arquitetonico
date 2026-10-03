@@ -7,6 +7,7 @@ import { queuePhotoDeletion } from './photoStorage'
 import { UnitContext } from './Measurement'
 import { ensureProjectMetadata, roomDisplayId } from './projectMetadata'
 import { unitNames, isMeasurementUnit } from './units'
+import UserMenu from './UserMenu'
 import { useMemo, useRef, useState } from 'react'
 import type { Project, Room } from './models'
 import { createRoom, findRoom, id, updateRoom } from './domain'
@@ -20,6 +21,7 @@ import { useLocalWorkspace } from './useLocalWorkspace'
 import { buildRoomGeometry } from './roomGeometry'
 import ExportPanel from './ExportPanel'
 import Report from './Report'
+import { syncStatusLong, syncStatusShort } from './sync'
 
 function RoomTree({ rooms, selected, onSelect, onAdd, onDelete }: { rooms: Room[]; selected: string; onSelect: (id: string) => void; onAdd: (parent: string) => void; onDelete: (room: Room) => void }) {
   return <ul className="room-tree">{rooms.map(room => <li key={room.id}><div className="tree-row"><button className={selected === room.id ? 'selected' : ''} onClick={() => onSelect(room.id)}>▧ <span>{room.displayId && <small className="room-display-id">{room.displayId} </small>}{room.name || 'Sem nome'}</span></button><button className="add-child" onClick={() => onAdd(room.id)} aria-label={`Adicionar subambiente em ${room.name}`} title="Adicionar subambiente">＋</button><button className="delete-tree" onClick={() => onDelete(room)} aria-label={`Excluir ambiente ${room.name}`}>×</button></div>{room.subrooms.length > 0 && <RoomTree rooms={room.subrooms} selected={selected} onSelect={onSelect} onAdd={onAdd} onDelete={onDelete}/>}</li>)}</ul>
@@ -30,7 +32,7 @@ const initialFloor = { id: initialFloorId, name: 'Térreo', rooms: [initialRoom]
 const initialProject: Project = ensureProjectMetadata({ id: id(), name: 'Meu levantamento', floors: [initialFloor], relationships: [] })
 
 export default function App() {
-  const { workspace, setWorkspace, ready, loadError, status, saveError, retrySave } = useLocalWorkspace({ projects: [initialProject], projectId: initialProject.id, floorId: initialFloor.id, roomId: initialRoom.id })
+  const { workspace, setWorkspace, ready, loadError, status, saveError, retrySave, syncStatus, syncPending, syncMessage, retrySync } = useLocalWorkspace({ projects: [initialProject], projectId: initialProject.id, floorId: initialFloor.id, roomId: initialRoom.id })
   const { projects, projectId, floorId, roomId } = workspace
   const workspaceRef = useRef(workspace); workspaceRef.current = workspace
   function setProjects(action: Project[] | ((projects: Project[]) => Project[])) { setWorkspace(current => {
@@ -102,7 +104,7 @@ export default function App() {
   }
   function changeRoom(next: Room) { changeProject(p => ({ ...p, floors: p.floors.map(f => f.id === floorId ? { ...f, rooms: updateRoom(f.rooms, next.id, () => next) } : f) })) }
   if (!ready) return <main className="loading-workspace"><h1>Campo</h1>{loadError ? <><p role="alert">{loadError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button></> : <p role="status">Abrindo seus projetos…</p>}</main>
-  return <PhotoActionsContext value={openPhotos}><UnitContext value={project.measurementUnit ?? 'm'}><header className="app-header"><a className="brand" href="./"><span className="brand-icon">⌑</span>campo<span className="brand-sub">LEVANTAMENTO ARQUITETÔNICO</span></a><div className="save-indicator"><span className="session" role="status" aria-live="polite">{status === 'saving' ? 'Salvando...' : status === 'saved' ? '✓ Salvo' : 'Não foi possível salvar'}</span>{status === 'error' && <button onClick={retrySave}>Tentar salvar novamente</button>}</div></header>
+  return <PhotoActionsContext value={openPhotos}><UnitContext value={project.measurementUnit ?? 'm'}><header className="app-header"><a className="brand" href="./"><span className="brand-icon">⌑</span>campo<span className="brand-sub">LEVANTAMENTO ARQUITETÔNICO</span></a><div className="save-indicator"><span className="session" role="status" aria-live="polite">{status === 'saving' ? 'Salvando...' : status === 'saved' ? '✓ Salvo' : 'Não foi possível salvar'}</span>{status === 'error' && <button onClick={retrySave}>Tentar salvar novamente</button>}{syncStatus !== 'off' && <span className={`sync-status sync-${syncStatus === 'synced' ? 'synced' : 'pending'}`} title={syncMessage || syncStatusLong(syncStatus, syncPending)} role="status" aria-live="polite"><span aria-hidden="true">☁ </span>{syncStatusShort[syncStatus]}{syncStatus !== 'synced' && syncPending > 0 ? ` (${syncPending})` : ''}<span className="sr-only">. {syncStatusLong(syncStatus, syncPending)}</span></span>}{syncStatus === 'auth' && <a className="sync-login" href="entrar">Entrar</a>}{syncStatus === 'error' && <button onClick={retrySync}>Tentar sincronizar</button>}</div><UserMenu/></header>
     {saveError && <div className="save-error" role="alert">{saveError} Os dados continuam abertos para edição. Tente salvar novamente antes de fechar.</div>}
     <button className="mobile-navigation" aria-expanded={navigationOpen} aria-controls="project-navigation" onClick={() => setNavigationOpen(value => !value)}>{navigationOpen ? 'Recolher projeto' : '☰ Projeto e ambientes'}</button><div className="app-shell"><nav id="project-navigation" className={`sidebar ${navigationOpen ? 'navigation-open' : ''}`} aria-label="Organização do levantamento"><div className="sidebar-title"><span className="eyebrow">SEU LEVANTAMENTO</span><button onClick={addProject} aria-label="Criar projeto" title="Criar projeto">＋</button></div>
       <label>Projeto<select value={projectId} onChange={e => { const next = projects.find(p => p.id === e.target.value)!; setProjectId(next.id); setFloorId(next.floors[0]?.id || ''); setRoomId(next.floors[0]?.rooms[0]?.id || '') }}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>

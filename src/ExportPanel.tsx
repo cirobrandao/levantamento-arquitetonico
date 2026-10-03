@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Project } from './models'
 import type { WorkspaceData } from './storage'
+import ServerHistory from './ServerHistory'
 import { createBackup, downloadText, importProjects, parseBackup, projectCsv } from './exporting'
 
 // Exportações (relatório, planilha, backup) e importação de backup.
@@ -28,6 +29,7 @@ export default function ExportPanel({ workspace, project, onImport, onReport }: 
       <label className="import-button">Importar backup…<input ref={input} type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file) }}/></label>
     </div>
     <p className="muted">O backup guarda todas as medidas originais e pode ser importado em outro navegador ou aparelho.</p>
+    <ServerHistory/>
     {message && <p className={message.type === 'error' ? 'export-error' : 'export-ok'} role={message.type === 'error' ? 'alert' : 'status'}>{message.text}</p>}
   </details>
 }

@@ -1,4 +1,4 @@
-import { openDatabase } from './database'
+import { BASE_DATABASE, DATABASE_NAME, openDatabase, scope } from './database'
 import { acknowledgePhotoDeletions, pendingPhotoDeletions, thumbnailKey } from './photoStorage'
 import { migrateRoomPhotos, photoFileIds } from './photos'
 import { migrateRoomObjects } from './roomObjects'
@@ -8,8 +8,10 @@ import { ensureProjectMetadata } from './projectMetadata'
 import { isMeasurementUnit } from './units'
 
 export const SCHEMA_VERSION = 4
-export { DATABASE_NAME } from './database'
-export const JOURNAL_KEY = 'campo-autosave-journal-v1'
+export { DATABASE_NAME, storageScope } from './database'
+const BASE_JOURNAL = 'campo-autosave-journal-v1', BASE_LOCAL = 'campo-local-workspace-v1'
+export const JOURNAL_KEY = `${BASE_JOURNAL}${scope}`
+const LOCAL_KEY = `${BASE_LOCAL}${scope}`
 export interface WorkspaceData { projects: Project[]; projectId: string; floorId: string; roomId: string }
 export interface StoredWorkspace { schemaVersion: number; revision: string; savedAt: string; data: WorkspaceData }
 export function restoreNavigation(data: WorkspaceData): WorkspaceData {
@@ -64,10 +66,10 @@ export function encodeSnapshot(snapshot: StoredWorkspace): string {
 export function decodeSnapshot(text: string): StoredWorkspace {
   return readSnapshot(JSON.parse(text, (_, value) => value && typeof value === 'object' && Object.keys(value).length === 1 && '$campoNumber' in value ? value.$campoNumber === 'NaN' ? NaN : value.$campoNumber === 'Infinity' ? Infinity : value.$campoNumber === '-Infinity' ? -Infinity : value.$campoNumber === '-0' ? -0 : value : value))
 }
-export async function loadWorkspace(): Promise<StoredWorkspace | null> {
+async function loadFrom(databaseName: string, localKey: string, journalKey: string): Promise<StoredWorkspace | null> {
   if (!globalThis.indexedDB) {
     try {
-      const local = localStorage.getItem('campo-local-workspace-v1'), journal = localStorage.getItem(JOURNAL_KEY)
+      const local = localStorage.getItem(localKey), journal = localStorage.getItem(journalKey)
       const record = local ? decodeSnapshot(local) : null
       const recent = journal ? decodeSnapshot(journal) : null
       return recent && (!record || recent.savedAt >= record.savedAt) ? recent : record
@@ -76,7 +78,7 @@ export async function loadWorkspace(): Promise<StoredWorkspace | null> {
       throw error
     }
   }
-  const db = await openDatabase()
+  const db = await openDatabase(databaseName)
   const saved = await new Promise<unknown>((resolve, reject) => {
     const transaction = db.transaction('workspace', 'readonly')
     const request = transaction.objectStore('workspace').get('current')
@@ -88,14 +90,20 @@ export async function loadWorkspace(): Promise<StoredWorkspace | null> {
   })
   const record = saved === undefined ? null : readSnapshot(saved)
   let journal: string | null = null
-  try { journal = localStorage.getItem(JOURNAL_KEY) } catch { /* IndexedDB remains usable if the auxiliary journal is unavailable. */ }
+  try { journal = localStorage.getItem(journalKey) } catch { /* IndexedDB remains usable if the auxiliary journal is unavailable. */ }
   if (!journal) return record
   const recent = decodeSnapshot(journal)
   return !record || recent.savedAt >= record.savedAt ? recent : record
 }
+export const loadWorkspace = () => loadFrom(DATABASE_NAME, LOCAL_KEY, JOURNAL_KEY)
+// Dados gravados antes do login (armazenamento sem usuário), para migração ao primeiro acesso.
+export async function loadLegacyWorkspace(): Promise<StoredWorkspace | null> {
+  if (!scope) return null
+  try { return await loadFrom(BASE_DATABASE, BASE_LOCAL, BASE_JOURNAL) } catch (error) { console.warn('Dados locais anteriores ao login não puderam ser lidos.', error); return null }
+}
 export async function saveWorkspace(snapshot: StoredWorkspace): Promise<void> {
   readSnapshot(snapshot)
-  if (!globalThis.indexedDB) { localStorage.setItem('campo-local-workspace-v1', encodeSnapshot(snapshot)); return }
+  if (!globalThis.indexedDB) { localStorage.setItem(LOCAL_KEY, encodeSnapshot(snapshot)); return }
   const db = await openDatabase()
   const deletedFiles = pendingPhotoDeletions(photoFileIds(snapshot.data.projects))
   await new Promise<void>((resolve, reject) => {
