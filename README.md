@@ -52,7 +52,7 @@ Excluir uma foto exige confirmação; seus Blobs são removidos na mesma transa�
 
 Verificação: `npm test` executa onze suítes. `tests/photos.mjs` cobre busca e filtros, renomeação, desvinculação, preservação de medidas, migração de schemas/banco, Blobs separados, reabertura e exclusão de arquivos. `fake-indexeddb` é utilizado apenas nos testes. A interface foi verificada em largura mobile pela rede local, com botões de captura grandes e mini croqui persistente; a câmera física precisa ser validada no celular. Não há backup/exportação nesta etapa.
 
-## Croqui: rótulos realocáveis, ângulos automáticos e portas (nerv)
+## Croqui: rótulos realocáveis, ângulos automáticos e portas
 
 - **Rótulos realocáveis**: com o mouse, arraste qualquer rótulo do croqui (medidas das paredes, J01/P01, PI01, ângulos, cantos, diagonais, entrada e pé-direito). No celular, toque em **Ajustar rótulos** e arraste com o dedo (setas do teclado também movem; Delete restaura). A posição fica salva por item em `room.labelOffsets` (deslocamento sobre a posição automática), entra no IndexedDB, no backup JSON e na sincronização. **Restaurar** volta um rótulo; **Restaurar todos** volta o croqui inteiro. O posicionamento automático também passou a evitar sobreposição por área (ex.: J01 sobre a medida da parede C).
 - **Pé-direito**: aparece no croqui ("Pé-direito 2,80 m"); os campos de medida mostram o padrão brasileiro fora de edição ("2,80"), sem alterar o valor salvo.
