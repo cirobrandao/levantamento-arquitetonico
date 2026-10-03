@@ -54,7 +54,6 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
         return <g className="svg-ceiling" pointerEvents="none"><Movable id="ceiling" box={{ x: 424 - width, y: 12, width, height: 16 }} title="pé-direito"><text x={421} y={24} textAnchor="end">{text}</text></Movable></g>
       })()}
       {!geometry.segments.length && !objectPlacements.length && <text x="220" y="175" textAnchor="middle" className="svg-empty">{room ? 'Adicione a parede A para começar' : 'Selecione um ambiente'}</text>}
-      <RoomObjectSketch onMove={room && onObjectsChange && variant !== 'report' ? (objectId, position) => onObjectsChange((room.objects ?? []).map(item => item.id === objectId ? { ...item, position } : item)) : undefined} placements={objectPlacements} geometry={geometry} selectedId={selectedObjectId} onSelect={objectId => { setSelection(undefined); setExpanded(false); onSelectObject?.(objectId) }}/>
       {objectPlacements.length > 0 && (() => { const origin = geometry.project({ x: 0, y: 0 }); return <g className="object-coordinate-origin" pointerEvents="none"><title>Origem das posições dos objetos: X=0, Y=0, início da primeira parede</title><path d={`M${origin.x-5} ${origin.y}h10M${origin.x} ${origin.y-5}v10`}/></g> })()}
       {geometry.diagonalSegments.map(segment => {
         const start = geometry.project(segment.start), end = geometry.project(segment.end)
@@ -103,6 +102,8 @@ export default function Sketch({ room, survey, focusElementId, selectedObjectId,
           <Movable id={`angle:${corner.id}`} box={label.box} title={`ângulo ${corner.label}`}><text x={label.x} y={label.y} textAnchor="middle" className="corner-angle"><tspan x={label.x}>{defined ? `${corner.angleSource === 'calculated' ? '≈ ' : ''}${degrees.format(corner.angleDegrees!)}°` : '?'}</tspan><tspan x={label.x} dy="12" className="angle-source">{source}</tspan></text></Movable>
         </g>
       })}
+      {/* Objetos por cima dos rótulos, para poderem ser selecionados e arrastados mesmo sob um rótulo. */}
+      <RoomObjectSketch onMove={room && onObjectsChange && variant !== 'report' ? (objectId, position) => onObjectsChange((room.objects ?? []).map(item => item.id === objectId ? { ...item, position } : item)) : undefined} placements={objectPlacements} geometry={geometry} selectedId={selectedObjectId} onSelect={objectId => { setSelection(undefined); setExpanded(false); onSelectObject?.(objectId) }}/>
     </svg></DragProvider></div>
     {drag.api.enabled && <div className="label-tools">
       <button className={`label-arrange ${arrange ? 'is-on' : ''}`} aria-pressed={arrange} onClick={() => { setArrange(value => !value); drag.setActive(undefined) }}>✥ {arrange ? 'Concluir ajuste' : 'Ajustar rótulos'}</button>

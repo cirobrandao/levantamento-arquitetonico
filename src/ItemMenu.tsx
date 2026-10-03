@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-// Uma única ação por item da árvore: o botão ⋯ abre Renomear / Adicionar / Excluir.
+// Uma única ação por item da árvore: o botão ⋯ abre as ações do item (projeto/pavimento: Renomear ali mesmo; ambiente: Adicionar subambiente / Excluir).
 export interface ItemAction { label: string; onSelect: () => void; danger?: boolean }
 export function ItemMenu({ label, actions }: { label: string; actions: ItemAction[] }) {
   const [open, setOpen] = useState(false)
