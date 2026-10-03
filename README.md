@@ -2,15 +2,15 @@
 
 Estrutura inicial em React, TypeScript e Vite. Interface em português, com projetos, pavimentos, ambientes e subambientes independentes.
 
-## Executar
-
 ## GitHub e publicação
 
-Código: https://github.com/jeanrocha-15/levantamento-arquitetonico (repositório privado).
+Código: https://github.com/jeanrocha-15/levantamento-arquitetonico (repositório público).
+
+Aplicação: https://jeanrocha-15.github.io/levantamento-arquitetonico/
 
 O workflow “Verificar aplicação” executa testes e build após envios para main/dev e em pull requests. O Vite gera caminhos relativos para os arquivos de produção, permitindo hospedar o resultado em uma subpasta.
 
-O workflow “Publicar aplicação no GitHub Pages” está preparado para execução manual em Actions, depois de habilitar Pages com origem GitHub Actions em Settings → Pages. A tentativa inicial de habilitação foi recusada pelo GitHub porque o plano atual não permite Pages neste repositório privado. Nenhum site foi publicado. Manter o código privado exige um plano compatível para Pages ou outra hospedagem. A publicação serve somente a aplicação; projetos salvos continuam locais ao navegador de cada pessoa.
+O workflow “Publicar aplicação no GitHub Pages” pode ser executado manualmente em Actions para publicar atualizações da branch main. Pages utiliza GitHub Actions como origem. A publicação serve somente a aplicação; projetos salvos continuam locais ao navegador de cada pessoa.
 
 ## Executar localmente
 
